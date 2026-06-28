@@ -209,7 +209,11 @@ Item {
                 height: 116   // play button height
 
                 // Left side: (empty for now — prototype had shuffle/repeat, Task 17 scope)
-                Item { id: transportLeft; anchors { left: parent.left; verticalCenter: parent.verticalCenter }; width: parent.width / 3 }
+                Item {
+                    id: transportLeft
+                    width: parent.width / 3
+                    anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+                }
 
                 // Center group (.transport-mid): Prev | Play/Pause | Next
                 Row {

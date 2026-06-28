@@ -46,8 +46,8 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 currentIndex: 0
                 NowPlaying { }
-                Rectangle { color: "transparent"; Text { anchors.centerIn: parent; color: Theme.fg; text: "Search"; font.pixelSize: Theme.xl } }
-                Rectangle { color: "transparent"; Text { anchors.centerIn: parent; color: Theme.fg; text: "Lyrics"; font.pixelSize: Theme.xl } }
+                Search { }
+                Lyrics { }
                 Rectangle { color: "transparent"; Text { anchors.centerIn: parent; color: Theme.fg; text: "Visualizer"; font.pixelSize: Theme.xl } }
             }
         }
