@@ -1343,7 +1343,7 @@ git commit -m "feat: QML theme singleton and tabbed app shell"
 
 ---
 
-## Task 11: Wire backend objects into QML + Now Playing screen
+## Task 11: Wire backend objects into QML + Now Playing screen ✅ DONE (commit f5f07db)
 
 **Files:**
 - Create: `qml/NowPlaying.qml`
