@@ -1,0 +1,25 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="styles.css"></head>
+<body style="background:#000; overflow:hidden;">
+  <div class="guest-qr"><div class="code"></div><div>Scan to add songs<br><b>tv.local:8950</b></div></div>
+
+  <!-- faint rotating spokes -->
+  <div style="position:absolute; top:50%; left:50%; width:1500px; height:1500px; transform:translate(-50%,-50%) rotate(18deg);
+              background:repeating-conic-gradient(from 0deg, rgba(0,224,198,0.06) 0deg 3deg, transparent 3deg 18deg); border-radius:50%;"></div>
+
+  <!-- outer beat glow (edges intensify with the beat) -->
+  <div style="position:absolute; top:50%; left:50%; width:1180px; height:1180px; transform:translate(-50%,-50%); border-radius:50%;
+              background:radial-gradient(circle, rgba(0,224,198,0) 34%, rgba(0,224,198,0.35) 47%, rgba(255,61,166,0.30) 58%, rgba(0,0,0,0) 70%);
+              filter:blur(24px);"></div>
+
+  <!-- bright pulse ring -->
+  <div style="position:absolute; top:50%; left:50%; width:640px; height:640px; transform:translate(-50%,-50%); border-radius:50%;
+              border:10px solid rgba(255,255,255,0.92);
+              box-shadow:0 0 90px 24px rgba(0,224,198,0.6), inset 0 0 70px rgba(255,61,166,0.5);"></div>
+
+  <!-- glowing core -->
+  <div style="position:absolute; top:50%; left:50%; width:300px; height:300px; transform:translate(-50%,-50%); border-radius:50%;
+              background:radial-gradient(circle, #ffffff, #00e0c6 58%, #ff3da6); filter:blur(2px);"></div>
+
+  <div style="position:absolute; bottom:80px; left:80px; z-index:2; font-size:var(--xl); font-weight:800;">Midnight City · M83</div>
+  <div style="position:absolute; bottom:80px; right:80px; z-index:2; font-size:var(--sm); color:var(--muted);">Mode: Radial Pulse ▾</div>
+</body></html>
