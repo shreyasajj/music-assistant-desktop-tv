@@ -413,7 +413,7 @@ git commit -m "feat: settings load/save"
 
 ---
 
-## Task 4: Lyrics LRC parsing
+## Task 4: Lyrics LRC parsing ✅ DONE (commit 28f34ef)
 
 **Files:**
 - Create: `src/bigscreen_jukebox/lyrics.py`
