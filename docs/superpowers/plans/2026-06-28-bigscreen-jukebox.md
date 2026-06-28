@@ -533,7 +533,7 @@ git commit -m "feat: LRC lyrics parsing and current-line selection"
 
 ---
 
-## Task 5: MA Client — connection & state
+## Task 5: MA Client — connection & state ✅ DONE (commit ff8da5e)
 
 **Files:**
 - Create: `src/bigscreen_jukebox/ma_client.py`
