@@ -1,7 +1,6 @@
 from __future__ import annotations
 import sys
 from pathlib import Path
-from PySide6.QtCore import QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 from .config import load_settings, default_config_path

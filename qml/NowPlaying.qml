@@ -161,6 +161,7 @@ Item {
                     height: 8
                     radius: 6
                     color: Qt.rgba(1, 1, 1, 0.16)
+                    clip: true
 
                     // Fill gradient a1→a2
                     Rectangle {
@@ -378,6 +379,7 @@ Item {
 
     // ── Helpers ──────────────────────────────────────────────────────────────
     function formatMs(ms) {
+        if (ms <= 0) return "0:00"
         var totalSec = Math.floor(ms / 1000)
         var m = Math.floor(totalSec / 60)
         var s = totalSec % 60
