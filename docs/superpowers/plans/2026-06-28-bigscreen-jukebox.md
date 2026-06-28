@@ -324,7 +324,7 @@ git commit -m "feat: static HTML mockups of all screens (visual design reference
 
 ---
 
-## Task 3: Config / Settings
+## Task 3: Config / Settings ✅ DONE (commit 1bdc9ce)
 
 **Files:**
 - Create: `src/bigscreen_jukebox/config.py`
