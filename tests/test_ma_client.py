@@ -52,3 +52,24 @@ def test_missing_media_is_safe(client):
     assert client.trackTitle == ""
     assert client.durationMs == 0
     assert json.loads(client.lyricsJson)["lines"] == []
+
+def test_actions_dispatch_expected_commands(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(client, "_dispatch", lambda command, **a: calls.append((command, a)))
+    client.select_player("living")
+    client.playPause(); client.next(); client.previous()
+    client.seek(30000); client.setVolume(40)
+    client.playNow("library://track/5"); client.addToQueue("library://track/6")
+    names = [c[0] for c in calls]
+    assert "play_pause" in names and "next" in names and "previous" in names
+    assert ("seek", {"player_id": "living", "position_ms": 30000}) in calls
+    assert ("set_volume", {"player_id": "living", "level": 40}) in calls
+    assert ("play_media", {"player_id": "living", "uri": "library://track/5", "enqueue": "play"}) in calls
+    assert ("play_media", {"player_id": "living", "uri": "library://track/6", "enqueue": "add"}) in calls
+
+def test_set_search_results(client):
+    seen = []
+    client.searchResultsChanged.connect(lambda: seen.append(len(client.searchResults)))
+    client.set_search_results([{"title": "T", "artist": "A", "uri": "u"}])
+    assert client.searchResults[0]["uri"] == "u"
+    assert seen == [1]
