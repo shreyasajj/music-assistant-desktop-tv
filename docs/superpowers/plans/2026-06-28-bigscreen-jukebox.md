@@ -990,7 +990,7 @@ git commit -m "feat: audio FFT energy/beat/bars(64) analysis"
 
 ---
 
-## Task 8: QR code utility
+## Task 8: QR code utility ✅ DONE (commit f83d3c9)
 
 **Files:**
 - Create: `src/bigscreen_jukebox/qr.py`
