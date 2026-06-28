@@ -31,3 +31,9 @@ async def test_index_serves_html(server, aiohttp_client):
     assert resp.status == 200
     assert "text/html" in resp.headers["Content-Type"]
     assert "Add a song" in await resp.text()
+
+def test_local_ip_returns_dotted_quad():
+    from bigscreen_jukebox.guest_server import local_ip
+    ip = local_ip()
+    parts = ip.split(".")
+    assert len(parts) == 4 and all(p.isdigit() for p in parts)

@@ -1,8 +1,20 @@
 # src/bigscreen_jukebox/guest_server.py
 from __future__ import annotations
+import socket
 from typing import Awaitable, Callable
 from aiohttp import web
 from .qr import qr_data_uri
+
+
+def local_ip() -> str:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        s.close()
 
 PAGE = """<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

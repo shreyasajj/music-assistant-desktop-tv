@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import sys
 from pathlib import Path
 from PySide6.QtGui import QGuiApplication
@@ -7,7 +8,7 @@ from PySide6.QtCore import QObject, Signal, Property, Slot
 from .config import load_settings, default_config_path
 from .ma_client import MaClient
 from .audio_analysis import AudioAnalyzer
-from .guest_server import GuestServer
+from .guest_server import GuestServer, local_ip
 
 QML_DIR = Path(__file__).resolve().parent.parent.parent / "qml"
 
@@ -26,9 +27,30 @@ class GuestController(QObject):
 
     @Slot()
     def toggle(self):
-        # Live start/stop is driven from the asyncio loop in Task 14; here we flip state.
-        self._enabled = not self._enabled
-        self.enabledChanged.emit()
+        if not self._enabled:
+            self._server = GuestServer(
+                self._ma.search_for_guest,
+                self._ma.addToQueue_async,
+                self._settings.guest_port)
+
+            async def _go():
+                await self._server.start(local_ip())
+                self._url = self._server.join_url
+                self._qr = self._server.qr_uri
+                self._enabled = True
+                self.enabledChanged.emit()
+
+            asyncio.ensure_future(_go())
+        else:
+            async def _stop():
+                await self._server.stop()
+                self._server = None
+                self._url = ""
+                self._qr = ""
+                self._enabled = False
+                self.enabledChanged.emit()
+
+            asyncio.ensure_future(_stop())
 
     enabled = Property(bool, lambda s: s._enabled, notify=enabledChanged)
     joinUrl = Property(str, lambda s: s._url, notify=enabledChanged)
@@ -37,22 +59,45 @@ class GuestController(QObject):
 
 def main() -> int:
     app = QGuiApplication(sys.argv)
-    engine = QQmlApplicationEngine()
-    engine.addImportPath(str(QML_DIR))
+
+    try:
+        import qasync
+        loop = qasync.QEventLoop(app)
+        asyncio.set_event_loop(loop)
+        use_qasync = True
+    except ImportError:
+        print("[warn] qasync not installed; falling back to QApplication.exec() without asyncio integration")
+        use_qasync = False
 
     settings = load_settings(default_config_path())
     ma = MaClient(settings)
     analyzer = AudioAnalyzer()
     guest = GuestController(ma, settings)
 
-    engine.rootContext().setContextProperty("maClient", ma)
-    engine.rootContext().setContextProperty("audioAnalyzer", analyzer)
-    engine.rootContext().setContextProperty("guestController", guest)
-
+    engine = QQmlApplicationEngine()
+    engine.addImportPath(str(QML_DIR))
+    for name, obj in (("maClient", ma), ("audioAnalyzer", analyzer), ("guestController", guest)):
+        engine.rootContext().setContextProperty(name, obj)
     engine.load(QML_DIR / "main.qml")
     if not engine.rootObjects():
         return 1
-    return app.exec()
+
+    if use_qasync:
+        async def startup():
+            try:
+                await ma.connect()
+            except Exception as e:
+                print(f"[warn] MA connect failed: {e}")
+            try:
+                analyzer.start()
+            except Exception as e:
+                print(f"[warn] audio capture unavailable: {e}")
+
+        loop.create_task(startup())
+        with loop:
+            return loop.run_forever()
+    else:
+        return app.exec()
 
 
 if __name__ == "__main__":

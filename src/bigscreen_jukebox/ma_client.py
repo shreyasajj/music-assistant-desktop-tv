@@ -107,6 +107,13 @@ class MaClient(QObject):
             for r in (results or [])
         ])
 
+    async def search_for_guest(self, query: str) -> list[dict]:
+        await self.searchAsync(query)
+        return list(self._search_results)
+
+    async def addToQueue_async(self, uri: str) -> None:
+        await self._dispatch("play_media", player_id=self._active, uri=uri, enqueue="add")
+
     async def disconnect(self):
         if self._session is not None:
             await self._session.disconnect()
