@@ -10,6 +10,10 @@
 
 ## Global Constraints
 
+- **Canonical design = the `bigscreen-jukebox/` web prototype** (`index.html`, `styles.css`, `app.js`; see its README). Every UI task must read the matching prototype file/section and translate it faithfully to QML — layout, proportions, font sizes/weights, radii, glass/blur panels, focus states, animations. **Where the QML snippets in this plan disagree with the prototype, the prototype wins.**
+- **Accent tokens:** `--a1 = #00e0c6`, `--a2 = #ff3da6`, background `#07070b`. Expose as `Theme.a1` / `Theme.a2` / `Theme.bg`; all gradients, focus rings and fills derive from these two.
+- **Backend → UI data contract** (from the prototype): the visualizer consumes `{ beat: 0..1, energy: 0..1, bars: [64] }`. The Python `AudioAnalyzer` exposes `energy: float`, `beat: float`, and `bars: list[float]` of length 64 in exactly that shape.
+- UI components to include (all present in the prototype): wordmark + centered tabs; player chip + dropdown device menu; **Up Next queue** panel; guest button that becomes a corner **QR card** and shifts the queue/player chip; Search D-pad focus highlight + PLAY affordance; Lyrics active/d1/d2 scroll; Visualizer **3 modes** (radial/flow/bars) + BEAT slider + source toggle (Simulated/Mic/Live feed); two-zone (top bar ↔ content) remote focus; 4K scaling.
 - Target platform: Plasma Bigscreen (Wayland), TV / 10-foot UI — large fonts, large artwork, high contrast, focus-navigable by remote **and** keyboard.
 - Minimum Music Assistant server version: **2.6** (first version exposing lyrics). Pin and document this.
 - Music Assistant connection is **direct to the server WebSocket** (`ws://<host>:8095/ws`); no Home Assistant dependency. Host/port/token come from settings; token is optional.
@@ -834,11 +838,12 @@ git commit -m "feat: MaClient transport actions, search, and live connection"
 - Create: `src/bigscreen_jukebox/audio_analysis.py`
 - Test: `tests/test_audio_analysis.py`
 
-**Interfaces:**
+**Interfaces (matches the prototype's `{ beat, energy, bars[64] }` contract):**
 - Consumes: nothing.
 - Produces a PySide6 `QObject` `AudioAnalyzer` with:
-  - `analyze(samples: "np.ndarray", sample_rate: int = 48000) -> dict` — pure function returning `{"low": float, "mid": float, "high": float, "energy": float, "beat": bool}`, each band normalized 0..1; `beat` True when energy jumps above a running threshold.
-  - Qt properties `low, mid, high, energy: float`, `beat: bool` + `bandsChanged` signal, updated by `push(samples, sample_rate)` which calls `analyze` and stores results.
+  - `NBARS = 64`.
+  - `analyze(samples: "np.ndarray", sample_rate: int = 48000) -> dict` returning `{"energy": float, "beat": float, "bars": list[float], "level": float}` — `energy` 0..1; `beat` a 0..1 onset value (≈1.0 on a bass transient above the running average, else 0.0); `bars` a length-**64** list of log-spaced spectrum magnitudes (each ≈0..1.2); `level` a convenience `min(1.4, beat*(0.5+energy*0.6))`.
+  - Qt properties `energy: float`, `beat: float`, `level: float`, `bars: list[float]` + `bandsChanged` signal, updated by `push(samples, sample_rate)`.
   - `start()` / `stop()` — open/close a PipeWire monitor capture stream (via `sounddevice`) on a background thread, calling `push` per block. Not unit-tested; verified manually in Task 14.
 
 - [ ] **Step 1: Write the failing test**
@@ -856,30 +861,45 @@ def test_silence_is_low_energy():
     a = AudioAnalyzer()
     out = a.analyze(np.zeros(4096, dtype=np.float32))
     assert out["energy"] < 0.01
-    assert out["beat"] is False
+    assert out["beat"] == 0.0
+    assert len(out["bars"]) == 64
+    assert max(out["bars"]) < 0.01
 
-def test_low_tone_loads_low_band():
+def test_bars_length_is_64():
     a = AudioAnalyzer()
-    out = a.analyze(sine(80))
-    assert out["low"] > out["high"]
+    out = a.analyze(sine(440))
+    assert len(out["bars"]) == 64
 
-def test_high_tone_loads_high_band():
+def test_low_tone_loads_low_bars():
     a = AudioAnalyzer()
-    out = a.analyze(sine(8000))
-    assert out["high"] > out["low"]
+    out = a.analyze(sine(80) * 5)
+    bars = out["bars"]
+    assert np.mean(bars[:8]) > np.mean(bars[-8:])
 
-def test_bands_are_normalized():
+def test_high_tone_loads_high_bars():
+    a = AudioAnalyzer()
+    out = a.analyze(sine(9000) * 5)
+    bars = out["bars"]
+    assert np.mean(bars[-8:]) > np.mean(bars[:8])
+
+def test_values_are_normalized():
     a = AudioAnalyzer()
     out = a.analyze(sine(440) * 10)  # loud
-    for k in ("low", "mid", "high", "energy"):
-        assert 0.0 <= out[k] <= 1.0
+    assert 0.0 <= out["energy"] <= 1.0
+    assert all(0.0 <= b <= 1.2 for b in out["bars"])
+
+def test_loud_bass_after_silence_triggers_beat():
+    a = AudioAnalyzer()
+    out = a.analyze(sine(60) * 6)   # running average starts at 0
+    assert out["beat"] == 1.0
 
 def test_push_updates_properties_and_signal():
     a = AudioAnalyzer()
     seen = []
     a.bandsChanged.connect(lambda: seen.append(a.energy))
     a.push(sine(80) * 5)
-    assert a.low >= 0.0
+    assert len(a.bars) == 64
+    assert a.energy >= 0.0
     assert len(seen) == 1
 ```
 
@@ -896,18 +916,17 @@ from __future__ import annotations
 import numpy as np
 from PySide6.QtCore import QObject, Signal, Property
 
-def _band(mag, freqs, lo, hi):
-    sel = (freqs >= lo) & (freqs < hi)
-    return float(mag[sel].mean()) if sel.any() else 0.0
-
 class AudioAnalyzer(QObject):
     bandsChanged = Signal()
+    NBARS = 64
 
     def __init__(self):
         super().__init__()
-        self._low = self._mid = self._high = self._energy = 0.0
-        self._beat = False
-        self._avg_energy = 0.0
+        self._energy = 0.0
+        self._beat = 0.0
+        self._level = 0.0
+        self._bars = [0.0] * self.NBARS
+        self._avg_bass = 0.0
 
     def analyze(self, samples: np.ndarray, sample_rate: int = 48000) -> dict:
         x = np.asarray(samples, dtype=np.float32)
@@ -915,24 +934,28 @@ class AudioAnalyzer(QObject):
             x = x.mean(axis=1)
         n = len(x)
         if n == 0:
-            return {"low": 0.0, "mid": 0.0, "high": 0.0, "energy": 0.0, "beat": False}
+            return {"energy": 0.0, "beat": 0.0, "bars": [0.0] * self.NBARS, "level": 0.0}
         win = x * np.hanning(n)
         mag = np.abs(np.fft.rfft(win)) / n
         freqs = np.fft.rfftfreq(n, 1.0 / sample_rate)
-        low = _band(mag, freqs, 20, 250)
-        mid = _band(mag, freqs, 250, 4000)
-        high = _band(mag, freqs, 4000, 20000)
-        energy = float(np.sqrt(np.mean(x ** 2)))
-        norm = lambda v: float(min(1.0, v / 0.1))
-        beat = energy > max(0.02, self._avg_energy * 1.3)
-        self._avg_energy = 0.9 * self._avg_energy + 0.1 * energy
-        return {"low": norm(low), "mid": norm(mid), "high": norm(high),
-                "energy": min(1.0, energy), "beat": bool(beat)}
+        # 64 log-spaced spectrum bars (20 Hz .. Nyquist-ish)
+        edges = np.logspace(np.log10(20), np.log10(min(18000, sample_rate / 2)), self.NBARS + 1)
+        bars = []
+        for i in range(self.NBARS):
+            sel = (freqs >= edges[i]) & (freqs < edges[i + 1])
+            v = float(mag[sel].mean()) if sel.any() else 0.0
+            bars.append(min(1.2, v / 0.02))
+        energy = float(min(1.0, np.sqrt(np.mean(x ** 2)) * 1.5))
+        bass = float(np.mean(bars[:5]))
+        beat = 1.0 if bass > self._avg_bass * 1.3 + 0.05 else 0.0
+        self._avg_bass = 0.9 * self._avg_bass + 0.1 * bass
+        level = float(min(1.4, beat * (0.5 + energy * 0.6)))
+        return {"energy": energy, "beat": beat, "bars": bars, "level": level}
 
     def push(self, samples: np.ndarray, sample_rate: int = 48000) -> None:
         r = self.analyze(samples, sample_rate)
-        self._low, self._mid, self._high = r["low"], r["mid"], r["high"]
         self._energy, self._beat = r["energy"], r["beat"]
+        self._level, self._bars = r["level"], r["bars"]
         self.bandsChanged.emit()
 
     def start(self) -> None:
@@ -947,23 +970,22 @@ class AudioAnalyzer(QObject):
         if s is not None:
             s.stop(); s.close(); self._stream = None
 
-    low = Property(float, lambda s: s._low, notify=bandsChanged)
-    mid = Property(float, lambda s: s._mid, notify=bandsChanged)
-    high = Property(float, lambda s: s._high, notify=bandsChanged)
     energy = Property(float, lambda s: s._energy, notify=bandsChanged)
-    beat = Property(bool, lambda s: s._beat, notify=bandsChanged)
+    beat = Property(float, lambda s: s._beat, notify=bandsChanged)
+    level = Property(float, lambda s: s._level, notify=bandsChanged)
+    bars = Property("QVariantList", lambda s: s._bars, notify=bandsChanged)
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_audio_analysis.py -v`
-Expected: PASS (5 tests)
+Expected: PASS (7 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/bigscreen_jukebox/audio_analysis.py tests/test_audio_analysis.py
-git commit -m "feat: audio FFT band/beat analysis"
+git commit -m "feat: audio FFT energy/beat/bars(64) analysis"
 ```
 
 ---
@@ -1190,32 +1212,35 @@ git commit -m "feat: embedded guest web server (search + add to queue)"
 
 **Interfaces:**
 - Consumes: `Theme` singleton values; later screen tasks fill in the tab bodies.
-- Produces: a runnable app window with a focusable tab bar and a `StackLayout` of four placeholder pages, navigable by Left/Right (or remote) and number keys; a `Theme.qml` singleton exposing color/size tokens copied from `mockups/styles.css`.
+- Produces: a runnable app window with a focusable tab bar and a `StackLayout` of four placeholder pages, navigable by Left/Right (or remote) and number keys; a `Theme.qml` singleton exposing tokens copied from the **canonical prototype** `bigscreen-jukebox/styles.css`.
 
-This and the remaining QML tasks are verified by running the app and looking, per the spec's UI testing strategy.
+This and the remaining QML tasks are verified by running the app and looking, per the spec's UI testing strategy. **Match the `bigscreen-jukebox/` prototype** — read the corresponding section of `styles.css`/`app.js` before building each piece.
 
-- [ ] **Step 1: Create the Theme singleton**
+- [ ] **Step 1: Create the Theme singleton (tokens from the prototype's `:root`)**
 
 ```qml
 // qml/Theme.qml
 pragma Singleton
 import QtQuick
 QtObject {
-    readonly property color bg: "#0b0b12"
-    readonly property color panel: "#15151f"
+    readonly property color a1: "#00e0c6"      // --a1 primary accent
+    readonly property color a2: "#ff3da6"      // --a2 secondary accent
+    readonly property color bg: "#07070b"
     readonly property color fg: "#ffffff"
     readonly property color muted: "#a0a0b0"
-    readonly property color accent: "#00e0c6"
-    readonly property color accent2: "#ff3da6"
+    readonly property color panel: "#0a0a10"
+    // size tokens (px at the authored 1920x1080)
     readonly property int xxl: 84
     readonly property int xl: 56
     readonly property int lg: 40
     readonly property int md: 30
     readonly property int sm: 24
-    readonly property int pad: 64
+    readonly property int pad: 56
     readonly property int radius: 24
 }
 ```
+
+> NOTE: later tasks reference `Theme.a1`/`Theme.a2` (not `Theme.accent`). If any QML snippet in this plan still says `Theme.accent`/`accent2`, treat it as `Theme.a1`/`Theme.a2`.
 
 Add `qml/qmldir` so the singleton resolves:
 
@@ -1503,10 +1528,11 @@ Item {
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
             text: modelData.text
-            color: index === list.active ? Theme.accent : Theme.muted
+            color: index === list.active ? Theme.a1 : Theme.muted
             font.pixelSize: index === list.active ? Theme.xxl : Theme.lg
             font.bold: index === list.active
             Behavior on font.pixelSize { NumberAnimation { duration: 150 } }
+            // parity: prototype uses active/d1/d2 tiers — see .lyric-line in styles.css
         }
         Text {
             anchors.centerIn: parent; visible: lyrics.lines.length === 0
@@ -1546,8 +1572,10 @@ git commit -m "feat: Search and karaoke Lyrics screens"
 - Modify: `qml/main.qml`, `src/bigscreen_jukebox/__main__.py`
 
 **Interfaces:**
-- Consumes: `audioAnalyzer` (Task 7) and `guestController` (a thin QObject wrapping `GuestServer`, added here) as context properties.
-- Produces: a fullscreen `Canvas` visualizer driven by `audioAnalyzer` bands/beat, and a top-right guest overlay showing the QR + URL when guest mode is enabled, toggled by the `G` key.
+- Consumes: `audioAnalyzer` (Task 7: `energy`, `beat`, `level`, `bars[64]`) and `guestController` (a thin QObject wrapping `GuestServer`, added here) as context properties.
+- Produces: a fullscreen `Canvas` visualizer with the prototype's **three modes** (Radial Pulse / Flow Lines / Bars) + a bottom mode bar, plus a top-right guest QR card toggled by the `G` key.
+
+> **Port the drawing from `bigscreen-jukebox/app.js`.** QML's `Canvas` uses the same 2D context API as the web prototype, so `vizRadial`, `vizFlow`, and `vizBars` port almost verbatim — replace `col1/col2` with `Theme.a1`/`Theme.a2`, and read `audioAnalyzer.energy/beat/level/bars`. Add the `.mode-bar` (Radial/Flow/Bars) and the BEAT slider + source toggle from the prototype. Left/Right arrows cycle modes (see `cycleMode` in `app.js`).
 
 - [ ] **Step 1: Add audioAnalyzer + guestController context properties (edit __main__.py)**
 
@@ -1582,31 +1610,52 @@ class GuestController(QObject):
 - [ ] **Step 2: Create Visualizer.qml**
 
 ```qml
-// qml/Visualizer.qml
+// qml/Visualizer.qml — Canvas dispatches to three modes ported from app.js.
+// (Skeleton; fill drawRadial/drawFlow/drawBars by porting vizRadial/vizFlow/vizBars
+//  from bigscreen-jukebox/app.js — same 2D API. col1->Theme.a1, col2->Theme.a2.)
 import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
 
 Item {
-    Rectangle { anchors.fill: parent; color: "#000000" }
+    property string mode: "radial"     // "radial" | "flow" | "bars"
+    property real vt: 0
+
+    Rectangle { anchors.fill: parent; color: "#050507" }
+
     Canvas {
         id: canvas; anchors.fill: parent
-        property int bars: 48
+        function a() { return { energy: audioAnalyzer.energy, beat: audioAnalyzer.beat,
+                                level: audioAnalyzer.level, bars: audioAnalyzer.bars } }
         onPaint: {
             var ctx = getContext("2d")
-            ctx.reset()
-            var w = width / bars
-            var base = audioAnalyzer.energy
-            for (var i = 0; i < bars; i++) {
-                var f = i / bars
-                var band = f < 0.33 ? audioAnalyzer.low : (f < 0.66 ? audioAnalyzer.mid : audioAnalyzer.high)
-                var h = (0.1 + band * 0.85) * height * (audioAnalyzer.beat ? 1.0 : 0.85)
-                var grad = ctx.createLinearGradient(0, height - h, 0, height)
-                grad.addColorStop(0, Theme.accent); grad.addColorStop(1, Theme.accent2)
-                ctx.fillStyle = grad
-                ctx.fillRect(i * w + 4, height - h, w - 8, h)
+            if (mode === "radial") drawRadial(ctx, width, height, a())
+            else if (mode === "flow") drawFlow(ctx, width, height, a())
+            else drawBars(ctx, width, height, a())
+        }
+        // function drawRadial(ctx,W,H,a){ /* port vizRadial */ }
+        // function drawFlow(ctx,W,H,a){ /* port vizFlow */ }
+        // function drawBars(ctx,W,H,a){ /* port vizBars (uses a.bars, length 64) */ }
+    }
+    // ~60fps repaint loop (the prototype drives this from requestAnimationFrame)
+    Timer { interval: 16; running: parent.visible; repeat: true
+            onTriggered: { vt += 0.016; canvas.requestPaint() } }
+
+    // bottom mode bar (Radial Pulse / Flow Lines / Bars) — match .mode-bar in styles.css
+    RowLayout {
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom; anchors.bottomMargin: 48; spacing: 12
+        Repeater {
+            model: [["radial","Radial Pulse"],["flow","Flow Lines"],["bars","Bars"]]
+            Button {
+                text: modelData[1]; font.pixelSize: 26
+                onClicked: mode = modelData[0]
+                // active style: gradient Theme.a1->Theme.a2 when mode === modelData[0]
             }
         }
     }
-    Connections { target: audioAnalyzer; function onBandsChanged() { canvas.requestPaint() } }
+    // TODO (match prototype): BEAT intensity slider + source toggle (Simulated/Mic/Live feed).
+
     Text {
         anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 80
         text: maClient.trackTitle + (maClient.trackArtist ? " · " + maClient.trackArtist : "")
@@ -2136,8 +2185,54 @@ git commit -m "feat: wire LRCLIB fallback into live loop and settings toggle"
 
 ---
 
+## Task 17: Prototype parity — top bar, Up Next queue, player menu, focus zones, 4K scaling
+
+**Files:**
+- Create: `qml/TopBar.qml`, `qml/UpNextQueue.qml`, `qml/PlayerMenu.qml`
+- Modify: `qml/main.qml`, `qml/NowPlaying.qml`, `qml/Search.qml`
+
+**Interfaces:**
+- Consumes: `maClient` (`players`, `activePlayerId`, `select_player`, `queue`), `guestController` (`enabled`, `toggle`).
+- Produces: the chrome and behaviors present in `bigscreen-jukebox/` that the earlier QML tasks didn't cover, brought to visual/behavioral parity with the prototype.
+
+> This task is verified by running the app side-by-side with the prototype (`python3 -m http.server -d bigscreen-jukebox 8000`) and matching each piece. Read the named `styles.css`/`app.js` sections before building.
+
+- [ ] **Step 1: Top bar with wordmark + centered tabs + player chip + Guest button**
+
+Build `qml/TopBar.qml` to match `.topbar` / `.wordmark` / `.tabs` / `.topright` in `styles.css`: left wordmark ("Bigscreen **Jukebox**" with the gradient dot), centered tab buttons with the active underline + focus ring, and right-side player chip (Now Playing only) + Guest button. Replace the simple tab row in `main.qml` with `TopBar`.
+
+- [ ] **Step 2: Up Next queue panel (Now Playing)**
+
+Build `qml/UpNextQueue.qml` to match `.queue` in `styles.css` (glass panel, "Up Next" + count, rows of thumb/name/artist/duration) bound to `maClient.queue`. When `guestController.enabled`, drop it below the corner QR card (the prototype's `.app.guest .queue { margin-top: 212px }`). Add it to `NowPlaying.qml`.
+
+- [ ] **Step 3: Player chip dropdown menu**
+
+Build `qml/PlayerMenu.qml` to match `.player-menu` (`PLAYERS` list → `maClient.players`): clicking the player chip opens a glass dropdown; selecting calls `maClient.select_player(id)`; the active device is accent-colored. Shift the chip left when guest mode is on (`.app.guest .player-wrap { margin-right: 236px }`).
+
+- [ ] **Step 4: Two-zone remote focus navigation**
+
+Port the focus model from `app.js` (`focusZone` = `topbar`|`content`, `topIdx`): ArrowUp from content enters the top bar; Left/Right move across tabs + Guest; Down returns to content; Enter activates. The focused element shows the accent focus ring (`.is-focus`). Keys 1–4 jump to screens, `G` toggles guest, Space toggles play.
+
+- [ ] **Step 5: 4K scaling**
+
+Match `fitToViewport()` in `app.js`: author the UI at 1920×1080 and scale to fill the window (1× at 1080p, 2× at 4K), centered. In QML, wrap the root content in a scaling container (e.g. an `Item` of fixed 1920×1080 with a `scale:` bound to `Math.min(width/1920, height/1080)`), or render at native resolution with size tokens — whichever matches the prototype's result on the target display.
+
+- [ ] **Step 6: Run side-by-side and verify parity**
+
+Run the app and the prototype together; confirm the top bar, Up Next queue, player menu, focus navigation, and scaling match. Fix differences toward the prototype.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add qml/ src/bigscreen_jukebox/__main__.py
+git commit -m "feat: prototype parity — top bar, Up Next queue, player menu, focus zones, 4K scaling"
+```
+
+---
+
 ## Self-Review notes (covered)
 
 - **Spec coverage:** native QML/Kirigami (T10–T15), direct MA WS (T5–T6, T14), PipeWire+FFT visualizer (T7, T13), MA-sourced synced lyrics with toggleable LRCLIB fallback (T4, T12, T16), guest QR→phone→queue with top-right toggle (T8–T9, T13–T14), tabbed screens (T10), default+switchable player (T5, T11), full transport (T6, T11), straight-to-queue guest add (T9), settings incl. lyrics-fallback toggle (T3, T15, T16), 10-foot styling + visual mockups (T2, T10).
 - **Deferred unknowns** from the spec's Open Questions are all resolved against a real server in **Task 14, Step 6**, with the exact mapping points called out (MA state schema, command names, client import, lyrics field, PipeWire source). Each is isolated to one place so a single edit fixes it.
 - **Type consistency:** property/method names (`update_from_player_state`, `searchResults`, `addToQueue`/`addToQueue_async`, `lyricsJson`, `analyze`/`push`, `qr_data_uri`, `GuestServer(search_fn, add_fn, port)`) are used identically across producing and consuming tasks.
+- **Design parity (canonical prototype):** the `bigscreen-jukebox/` web prototype is the binding visual/interaction spec (Global Constraints + per-UI-task notes). `AudioAnalyzer` emits the prototype's `energy/beat/bars[64]` contract (T7). Theme uses `--a1/--a2` tokens (T10). Visualizer ports the 3 modes from `app.js` (T13). Top bar, Up Next queue, player menu, two-zone focus nav, and 4K scaling are brought to parity in T17. Ralph (`ralph/PROMPT.md`) instructs every UI task to read and match the prototype.

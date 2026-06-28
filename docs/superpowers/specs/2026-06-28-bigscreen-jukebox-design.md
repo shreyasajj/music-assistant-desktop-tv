@@ -52,6 +52,19 @@ and a keyboard.
 | Player targeting | Configured default player, switchable on screen via a player picker |
 | Playback controls | Full transport (play/pause, next, prev, seek, volume) |
 
+## Canonical design reference
+
+The approved look and interaction model is the working web prototype in
+**`bigscreen-jukebox/`** (`index.html`, `styles.css`, `app.js`; see its README).
+The QML/Kirigami UI must match it: layout, proportions, font sizes, colors,
+focus/remote-navigation behavior, and animations. Accent tokens `--a1` (#00e0c6)
+and `--a2` (#ff3da6) over background #07070b drive everything. Where this document
+and the prototype differ in visual detail, the prototype is authoritative.
+
+The prototype also defines the **backend → UI data contract** the visualizer
+consumes: `{ beat: 0..1, energy: 0..1, bars: [64] }`. The native app's audio
+service exposes the same shape.
+
 ## Architecture
 
 Single Python (PySide6) process hosting a Kirigami/QML UI. The Python side
@@ -102,12 +115,15 @@ Each component has one purpose, a defined interface, and is testable on its own.
 
 ### 2. Audio analysis service
 - **Does:** Captures the TV's system audio output via a PipeWire loopback,
-  runs an FFT, and produces beat/energy and frequency-band values.
-- **Interface:** live properties — overall energy, low/mid/high band levels,
-  beat pulse — read by the visualizer at frame rate.
+  runs an FFT, and produces the beat/energy/bars signal the visualizer needs.
+- **Interface (matches the prototype's data contract):** live properties
+  `energy: float (0..1)`, `beat: float (0..1)`, and `bars: list[float]` of
+  length **64** (spectrum bins) — read by the visualizer at frame rate. A
+  derived `level` may also be exposed for convenience.
 - **Depends on:** PipeWire (monitor/loopback source), numpy.
 - **Notes:** Runs on its own thread; degrades to a calm idle animation when no
-  audio is present or capture is unavailable.
+  audio is present or capture is unavailable. The three visualizer modes
+  (radial / flow / bars) all read from this one signal.
 
 ### 3. Guest web server
 - **Does:** When guest mode is enabled, serves a mobile-friendly page so people
@@ -142,20 +158,27 @@ Each component has one purpose, a defined interface, and is testable on its own.
 
 ## Screens
 
-All screens use large fonts, large artwork, and high-contrast 10-foot styling.
-Tabs are switched with the remote/keyboard. The guest QR is a global overlay
-shown on every tab when guest mode is on.
+All screens use large fonts, large artwork, and high-contrast 10-foot styling,
+matching the `bigscreen-jukebox/` prototype. A persistent top bar carries the
+wordmark, the centered tabs, and (top-right) the player chip + a Guest button.
+Navigation works by remote D-pad **and** keyboard, with a two-zone focus model
+(top bar ↔ content) and an obvious focus ring. The guest QR is a corner card
+shown on every screen when guest mode is on (it shifts the queue/player chip).
 
-- **Now Playing** — large album art, big title/artist, progress bar, transport
-  controls (play/pause, next, previous, seek, volume), and a player picker to
-  switch which player is being viewed/controlled.
-- **Search** — a text field that works with the on-screen keyboard/remote, with
-  large result rows; selecting a result offers play-now or add-to-queue.
-- **Lyrics** — karaoke view: the current line shown large and centered and
-  highlighted in sync with playback position; scrolls automatically. Falls back
-  to plain scrollable lyrics, then to a "no lyrics found" state.
-- **Visualizer** — fullscreen, beat-reactive, driven by the audio analysis
-  service.
+- **Now Playing** — immersive: blurred album-art backdrop, large crisp artwork
+  that subtly pulses on the beat, big title/artist, progress bar with times,
+  minimal icon transport (previous / circular play-pause / next) + volume, a
+  player chip with a dropdown device menu, and an **Up Next queue** panel.
+- **Search** — a large search field (on-screen keyboard/remote), with big result
+  rows; the focused row is highlighted in the accent gradient and reveals a PLAY
+  affordance. Selecting plays now or adds to queue.
+- **Lyrics** — karaoke view: current line huge, centered, accent-colored;
+  neighbors dimmed (d1/d2 tiers); auto-scrolls in sync with playback position.
+  Falls back to plain lyrics, then a "no lyrics found" state.
+- **Visualizer** — fullscreen, beat-reactive, with **three switchable modes**
+  (Radial Pulse / Flow Lines / Bars), a BEAT intensity slider, and a source
+  toggle (Simulated / Mic / Live feed). Driven by the audio analysis service's
+  `energy / beat / bars` signal.
 
 ## Data Flow
 
