@@ -1565,7 +1565,7 @@ git commit -m "feat: Search and karaoke Lyrics screens"
 
 ---
 
-## Task 13: Visualizer screen + guest overlay
+## Task 13: Visualizer screen + guest overlay ✅ DONE (commit 6859196)
 
 **Files:**
 - Create: `qml/Visualizer.qml`, `qml/GuestOverlay.qml`
