@@ -66,7 +66,9 @@ music_assistant_desktop_linux/
 
 ---
 
-## Task 1: Project scaffold
+## Task 1: Project scaffold ✅ DONE (commit 2a5f16a)
+
+> Note: full `pip install -e ".[dev]"` deferred — pytest uses `pythonpath=src`; heavy deps (PySide6) install when a task needs them (Python 3.14 wheel availability).
 
 **Files:**
 - Create: `pyproject.toml`, `src/bigscreen_jukebox/__init__.py`, `README.md`
@@ -155,7 +157,7 @@ git commit -m "chore: project scaffold"
 
 ---
 
-## Task 2: Static HTML mockups (the visual mock design)
+## Task 2: Static HTML mockups (the visual mock design) ✅ DONE (commit a671ccc) — pending user visual sign-off
 
 **Files:**
 - Create: `mockups/index.html`, `mockups/nowplaying.html`, `mockups/search.html`, `mockups/lyrics.html`, `mockups/visualizer.html`, `mockups/styles.css`
