@@ -701,7 +701,7 @@ git commit -m "feat: MaClient state mapping and player selection"
 
 ---
 
-## Task 6: MA Client — actions & live connection
+## Task 6: MA Client — actions & live connection ✅ DONE (commit b95788c)
 
 **Files:**
 - Modify: `src/bigscreen_jukebox/ma_client.py`
