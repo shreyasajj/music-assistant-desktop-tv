@@ -1441,7 +1441,7 @@ git commit -m "feat: expose MaClient to QML and build Now Playing screen"
 
 ---
 
-## Task 12: Search & Lyrics screens
+## Task 12: Search & Lyrics screens ✅ DONE (commit dc66367)
 
 **Files:**
 - Create: `qml/Search.qml`, `qml/Lyrics.qml`
