@@ -19,7 +19,7 @@ async function go(){let q=document.getElementById('q').value;if(!q)return;
  let r=await fetch('/api/search?q='+encodeURIComponent(q));let d=await r.json();
  document.getElementById('results').innerHTML=d.results.map(x=>
   `<div class=row><span>${x.title}${x.artist?' — '+x.artist:''}</span>
-   <button onclick="add('${x.uri}')">Add</button></div>`).join('');}
+   <button onclick="add(${JSON.stringify(x.uri)})">Add</button></div>`).join('');}
 async function add(uri){await fetch('/api/add',{method:'POST',headers:{'Content-Type':'application/json'},
  body:JSON.stringify({uri})});}
 </script></body></html>"""
