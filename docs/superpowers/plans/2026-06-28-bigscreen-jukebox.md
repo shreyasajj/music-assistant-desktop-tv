@@ -1863,7 +1863,7 @@ git commit -m "feat: live integration (qasync loop, MA connect, audio + guest st
 
 ---
 
-## Task 15: Settings screen + Bigscreen packaging
+## Task 15: Settings screen + Bigscreen packaging ✅ DONE (commit e58174b)
 
 **Files:**
 - Create: `qml/SettingsView.qml`, `packaging/org.bigscreen.jukebox.desktop`
