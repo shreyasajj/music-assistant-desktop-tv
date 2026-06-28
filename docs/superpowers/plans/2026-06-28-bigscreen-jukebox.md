@@ -832,7 +832,7 @@ git commit -m "feat: MaClient transport actions, search, and live connection"
 
 ---
 
-## Task 7: Audio analysis service
+## Task 7: Audio analysis service ✅ DONE (commit 39554a8)
 
 **Files:**
 - Create: `src/bigscreen_jukebox/audio_analysis.py`
