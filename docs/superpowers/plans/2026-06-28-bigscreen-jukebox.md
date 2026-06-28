@@ -1052,7 +1052,7 @@ git commit -m "feat: QR code data-URI generation"
 
 ---
 
-## Task 9: Guest web server
+## Task 9: Guest web server ✅ DONE (commit 49c043a)
 
 **Files:**
 - Create: `src/bigscreen_jukebox/guest_server.py`
