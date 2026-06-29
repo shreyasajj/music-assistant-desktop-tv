@@ -1,5 +1,6 @@
-// qml/Lyrics.qml — karaoke lyrics. Two layouts (option: settingsController.compactLyrics):
-//   compact  — only the previous line, the active line, and the next two lines
+// qml/Lyrics.qml — karaoke lyrics (option: settingsController.compactLyrics):
+//   compact  — a smooth-scrolling window: lines slide up to center the active one,
+//              growing/fading as they reach the middle (like the web prototype)
 //   full     — the whole lyric sheet scrolling through a centered highlight
 // Optionally renders the visualizer behind the text (settingsController.vizBehindLyrics).
 import QtQuick
@@ -9,10 +10,11 @@ Item {
     id: root
     property var lyrics: JSON.parse(maClient.lyricsJson)
     property int active: activeLineIndex(maClient.positionMs)
-    property var win: windowLines()
     readonly property int count: (lyrics.lines ? lyrics.lines.length : 0)
     // clamp so the first line reads as "active" before the first timestamp passes
     readonly property int act: Math.max(0, active)
+    // before the first timestamped line there is nothing to highlight yet
+    readonly property bool intro: active < 0 && count > 0
 
     function activeLineIndex(posMs) {
         if (!lyrics.synced || !lyrics.lines) return -1
@@ -22,33 +24,6 @@ Item {
             else break
         }
         return idx
-    }
-    function lineText(i) {
-        return (lyrics.lines && i >= 0 && i < lyrics.lines.length) ? lyrics.lines[i].text : ""
-    }
-    // {above, center, below1, below2} for the compact window. Inserts a 🎵 filler
-    // during the intro and long instrumental gaps so the screen isn't blank.
-    function windowLines() {
-        var L = lyrics.lines || []
-        var n = L.length
-        if (n === 0) return { above: "", center: "", below1: "", below2: "" }
-        var pos = maClient.positionMs
-        var a = active
-        var MUSIC = "🎵"
-        if (a < 0) {                       // before the first line (intro)
-            if (L[0].time_ms !== null && L[0].time_ms > 2000 && pos < L[0].time_ms - 1200)
-                return { above: "", center: MUSIC, below1: L[0].text, below2: (n > 1 ? L[1].text : "") }
-            return { above: "", center: L[0].text, below1: (n > 1 ? L[1].text : ""), below2: (n > 2 ? L[2].text : "") }
-        }
-        if (a + 1 < n && L[a].time_ms !== null && L[a + 1].time_ms !== null) {
-            var gap = L[a + 1].time_ms - L[a].time_ms      // instrumental break
-            if (gap > 8000 && (pos - L[a].time_ms) > 5000 && (L[a + 1].time_ms - pos) > 1500)
-                return { above: L[a].text, center: MUSIC, below1: L[a + 1].text, below2: (a + 2 < n ? L[a + 2].text : "") }
-        }
-        return { above: (a - 1 >= 0 ? L[a - 1].text : ""),
-                 center: (a < n ? L[a].text : ""),
-                 below1: (a + 1 < n ? L[a + 1].text : ""),
-                 below2: (a + 2 < n ? L[a + 2].text : "") }
     }
 
     // optional visualizer background — recolored to magenta/violet so it doesn't
@@ -71,52 +46,59 @@ Item {
         }
     }
 
-    // ── Compact window: previous / active / next / next ───────────────────────
+    // ── Compact: smooth-scrolling karaoke window ──────────────────────────────
     Item {
+        id: compact
         anchors.fill: parent
+        clip: true
         visible: settingsController.compactLyrics && root.count > 0
 
-        Text {
-            id: aActive
-            anchors { horizontalCenter: parent.horizontalCenter; verticalCenter: parent.verticalCenter }
-            width: parent.width - 360
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.WordWrap
-            text: root.win.center
-            color: Theme.a1
-            font.pixelSize: 92
-            font.weight: Font.ExtraBold
-            Behavior on font.pixelSize { NumberAnimation { duration: 150 } }
+        readonly property int step: 124          // vertical spacing between lines
+        // scroll so the active line sits at the vertical centre (-1 during the intro)
+        readonly property real scrollPos: root.active
+
+        function lineOpacity(d) {
+            var ad = Math.abs(d)
+            return ad === 0 ? 1.0 : ad === 1 ? 0.5 : ad === 2 ? 0.28 : ad === 3 ? 0.12 : 0.0
         }
-        Text {
-            anchors { horizontalCenter: parent.horizontalCenter; bottom: aActive.top; bottomMargin: 36 }
-            width: parent.width - 460
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.WordWrap
-            text: root.win.above
-            color: Qt.rgba(1, 1, 1, 0.5)
-            font.pixelSize: 48
-            font.weight: Font.Bold
+
+        Item {
+            id: mover
+            width: parent.width
+            y: parent.height / 2 - compact.scrollPos * compact.step - compact.step / 2
+            Behavior on y { NumberAnimation { duration: 480; easing.type: Easing.OutCubic } }
+
+            Repeater {
+                model: lyrics.lines
+                delegate: Text {
+                    x: 200
+                    width: compact.width - 400
+                    y: index * compact.step
+                    height: compact.step
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    wrapMode: Text.WordWrap
+                    text: modelData.text
+                    property int d: index - root.active
+                    property bool isActive: d === 0 && !root.intro
+                    color: isActive ? Theme.a1 : Qt.rgba(1, 1, 1, 1)
+                    opacity: compact.lineOpacity(d)
+                    font.pixelSize: isActive ? 92 : (Math.abs(d) === 1 ? 48 : 42)
+                    font.weight: isActive ? Font.ExtraBold : Font.Bold
+                    Behavior on opacity { NumberAnimation { duration: 300 } }
+                    Behavior on font.pixelSize { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+                }
+            }
         }
+
+        // music note shown during the intro (before the first line), fades out
         Text {
-            id: aNext1
-            anchors { horizontalCenter: parent.horizontalCenter; top: aActive.bottom; topMargin: 36 }
-            width: parent.width - 460
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.WordWrap
-            text: root.win.below1
-            color: Qt.rgba(1, 1, 1, 0.5)
-            font.pixelSize: 48
-            font.weight: Font.Bold
-        }
-        Text {
-            anchors { horizontalCenter: parent.horizontalCenter; top: aNext1.bottom; topMargin: 24 }
-            width: parent.width - 520
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.WordWrap
-            text: root.win.below2
-            color: Qt.rgba(1, 1, 1, 0.28)
-            font.pixelSize: 42
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.verticalCenter: parent.verticalCenter
+            text: "🎵"
+            font.pixelSize: 96
+            opacity: root.intro ? 0.9 : 0.0
+            Behavior on opacity { NumberAnimation { duration: 350 } }
         }
     }
 
@@ -130,6 +112,8 @@ Item {
         preferredHighlightBegin: height / 2 - 60
         preferredHighlightEnd: height / 2 + 60
         highlightRangeMode: ListView.StrictlyEnforceRange
+        highlightMoveDuration: 400
+        highlightMoveVelocity: -1
         delegate: Text {
             width: ListView.view.width
             horizontalAlignment: Text.AlignHCenter
