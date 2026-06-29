@@ -193,8 +193,12 @@ async def test_party_helpers(client):
             self.saved = (domain, values, instance_id); return object()
     class _Prov:
         domain = "party"
+    class _Cfg2(_Cfg):
+        async def get_provider_config_value(self, domain, key):
+            assert domain == "party" and key == "enable_guest_access"
+            return True
     class _Session:
-        def __init__(self): self.config = _Cfg(); self.providers = [_Prov()]
+        def __init__(self): self.config = _Cfg2(); self.providers = [_Prov()]
         async def send_command(self, cmd, **k):
             assert cmd == "party/url"
             return "https://app.music-assistant.io/?join=ABC"
@@ -203,6 +207,7 @@ async def test_party_helpers(client):
     assert await client.party_url() == "https://app.music-assistant.io/?join=ABC"
     assert await client.party_set_guest_access(True) is True
     assert client._session.config.saved == ("party", {"enable_guest_access": True}, "party")
+    assert await client.party_guest_enabled() is True
 
 async def test_search_slot_populates_results(client):
     class _Artist:

@@ -6,7 +6,7 @@ from pathlib import Path
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
-from PySide6.QtCore import QObject, Signal, Property, Slot
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from .config import load_settings, save_settings, default_config_path
 from .ma_client import MaClient
 from .audio_analysis import AudioAnalyzer
@@ -39,6 +39,7 @@ class GuestController(QObject):
         self._qr = ""
         self._server = None
         self._mode = None      # "party" | "server"
+        self._poll_timer = None
 
     @Slot()
     def toggle(self):
@@ -83,10 +84,33 @@ class GuestController(QObject):
         self._enabled = False
         self.enabledChanged.emit()
 
-    async def ensure_disabled(self):
-        """Start in a known-off state so the (off) Guest button reflects reality."""
-        if self._ma.has_party():
-            await self._ma.party_set_guest_access(False)
+    async def poll(self):
+        """Mirror the party plugin's guest-access state so guest mode enabled from
+        anywhere else (the Party dashboard, a phone) shows up here too."""
+        if not self._ma.has_party() or self._mode == "server":
+            return
+        enabled = await self._ma.party_guest_enabled()
+        if enabled and not self._enabled:
+            url = await self._ma.party_url()
+            if url:
+                self._url = url
+                self._qr = qr_data_uri(url)
+                self._mode = "party"
+                self._enabled = True
+                self.enabledChanged.emit()
+        elif not enabled and self._enabled and self._mode == "party":
+            self._url = ""
+            self._qr = ""
+            self._mode = None
+            self._enabled = False
+            self.enabledChanged.emit()
+
+    def start_polling(self, interval_ms: int = 4000):
+        if self._poll_timer is None:
+            self._poll_timer = QTimer(self)
+            self._poll_timer.setInterval(interval_ms)
+            self._poll_timer.timeout.connect(lambda: asyncio.ensure_future(self.poll()))
+            self._poll_timer.start()
 
     def _display_url(self):
         if not self._url:
@@ -199,9 +223,10 @@ def main() -> int:
             except Exception as e:
                 print(f"[warn] MA connect failed: {e}")
             try:
-                await guest.ensure_disabled()   # start with guest access off
+                await guest.poll()              # reflect the current party guest state
+                guest.start_polling()           # ... and keep it in sync with external changes
             except Exception as e:
-                print(f"[warn] could not reset guest access: {e}")
+                print(f"[warn] guest state sync failed: {e}")
             try:
                 analyzer.start()
             except Exception as e:

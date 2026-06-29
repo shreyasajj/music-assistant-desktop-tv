@@ -344,6 +344,17 @@ class MaClient(QObject):
         except Exception:
             return False
 
+    async def party_guest_enabled(self) -> bool:
+        """Whether the party plugin's guest access is currently on (it can be
+        toggled from the Party dashboard / a phone, not just from here)."""
+        if not self._session:
+            return False
+        try:
+            return bool(await self._session.config.get_provider_config_value(
+                "party", "enable_guest_access"))
+        except Exception:
+            return False
+
     async def resolve_lyrics_if_missing(self, fetcher) -> None:
         """If lyrics are empty and the LRCLIB fallback is enabled, fetch via
         `fetcher(artist, title, album, duration_ms) -> str | None`, parse, and update."""
