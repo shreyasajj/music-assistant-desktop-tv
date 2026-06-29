@@ -41,9 +41,13 @@ jobs:
       - name: Install system libraries
         run: |
           sudo apt-get update
-          # Qt runtime libs + PortAudio (visualizer capture) + AppImage tooling
+          # Qt runtime libs + PortAudio (visualizer capture) + AppImage tooling.
+          # libxkbcommon-x11-0 + libxcb-xkb1 back the XCB platform plugin (X11);
+          # without them PyInstaller can't bundle them and the AppImage may fail
+          # to start ("could not load the Qt platform plugin xcb") on minimal hosts.
           sudo apt-get install -y --no-install-recommends \
             libportaudio2 libpulse0 libegl1 libgl1 libxkbcommon0 \
+            libxkbcommon-x11-0 libxcb-xkb1 \
             libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
             libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 \
             libfuse2 file imagemagick wget
