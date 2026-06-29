@@ -37,7 +37,8 @@ ApplicationWindow {
             stack.currentIndex = i
             focusZone = "content"
             playerMenuOpen = false
-            if (i === 1) Qt.callLater(searchScreen.focusInput)   // type immediately on Search
+            if (i === 1) Qt.callLater(searchScreen.focusInput)       // type immediately on Search
+            else if (i === 4) Qt.callLater(settingsScreen.focusFirst)  // D-pad into Settings
             else stage.forceActiveFocus()
         }
         function enterTopbar() {
@@ -59,7 +60,12 @@ ApplicationWindow {
             if (stage.focusZone === "topbar") {
                 if (e.key === Qt.Key_Left)  { stage.topIdx = Math.max(0, stage.topIdx - 1); e.accepted = true }
                 else if (e.key === Qt.Key_Right) { stage.topIdx = Math.min(win.guestIdx, stage.topIdx + 1); e.accepted = true }
-                else if (e.key === Qt.Key_Down)  { stage.focusZone = "content"; e.accepted = true }
+                else if (e.key === Qt.Key_Down)  {
+                    stage.focusZone = "content"
+                    if (stack.currentIndex === 1) Qt.callLater(searchScreen.focusInput)
+                    else if (stack.currentIndex === 4) Qt.callLater(settingsScreen.focusFirst)
+                    e.accepted = true
+                }
                 else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space) { stage.activateTop(); e.accepted = true }
                 return
             }
@@ -106,7 +112,7 @@ ApplicationWindow {
             }
             Lyrics { }
             Visualizer { id: vizScreen }
-            SettingsView { }
+            SettingsView { id: settingsScreen; onRequestTopbar: stage.enterTopbar() }
         }
 
         // ── Top bar ──────────────────────────────────────────────────────────────

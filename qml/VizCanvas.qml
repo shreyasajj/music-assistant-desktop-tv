@@ -38,6 +38,17 @@ Item {
             var b = new Array(64); for (var i = 0; i < 64; i++) b[i] = 0.0; return b
         }
 
+        // split the 64 bars into bass / mid / high averages
+        function spectrum(bars) {
+            var bass = 0, mid = 0, hi = 0, nb = 0, nm = 0, nh = 0
+            for (var i = 0; i < bars.length; i++) {
+                if (i < 6) { bass += bars[i]; nb++ }
+                else if (i < 26) { mid += bars[i]; nm++ }
+                else { hi += bars[i]; nh++ }
+            }
+            return { bass: nb ? bass / nb : 0, mid: nm ? mid / nm : 0, hi: nh ? hi / nh : 0 }
+        }
+
         // Simulated source: hit at random intervals (not a steady BPM).
         function simulate(t) {
             if (t >= canvas.simNextBeat) {
@@ -62,19 +73,29 @@ Item {
         }
 
         function getAudioData() {
-            // No capture device chosen -> animate random beats.
-            if (audioAnalyzer.simulated)
-                return canvas.simulate(viz.vt)
-            // Live capture: react to the song's beat + bass; stay idle when silent.
-            var energy = audioAnalyzer.energy
-            var bass   = audioAnalyzer.bass
-            var beat   = audioAnalyzer.beat * viz.beatMul
-            var bars   = audioAnalyzer.bars
-            if (energy < 0.004 && bass < 0.03)
-                return { energy: 0, beat: 0, level: 0, bars: canvas.flatBars() }
-            var level = Math.min(1.4, (beat * 0.6 + bass * 0.9) * (0.6 + energy * 0.5))
-            return { energy: energy, beat: beat, level: level,
-                     bars: (bars && bars.length ? bars : canvas.flatBars()) }
+            var d
+            if (audioAnalyzer.simulated) {
+                d = canvas.simulate(viz.vt)               // random beats
+            } else {
+                // Live capture: react to the song's beat + bass; idle when silent.
+                var energy = audioAnalyzer.energy
+                var bass   = audioAnalyzer.bass
+                var beat   = audioAnalyzer.beat * viz.beatMul
+                var bars   = audioAnalyzer.bars
+                if (energy < 0.004 && bass < 0.03) {
+                    d = { energy: 0, beat: 0, level: 0, bars: canvas.flatBars() }
+                } else {
+                    var level = Math.min(1.4, (beat * 0.6 + bass * 0.9) * (0.6 + energy * 0.5))
+                    d = { energy: energy, beat: beat, level: level,
+                          bars: (bars && bars.length ? bars : canvas.flatBars()) }
+                }
+            }
+            // Spectrum split: the halo is driven by beat+bass (level); mids/highs
+            // add only a slight "the music is playing" shimmer via `tone`.
+            var s = canvas.spectrum(d.bars)
+            d.bass = s.bass; d.mid = s.mid; d.hi = s.hi
+            d.tone = Math.min(1.0, s.mid * 0.6 + s.hi * 0.5)
+            return d
         }
 
         onPaint: {
@@ -103,28 +124,35 @@ Item {
                 ctx.stroke()
             }
             ctx.restore()
-            if (a.beat > 0.55 && canvas.prevBeat <= 0.55) {
-                var nr = canvas.beatRings.slice(); nr.push({ r: 130, a: 1.0 }); canvas.beatRings = nr
+            // Halo rings on every beat, strength scaled by the bass.
+            if (a.beat > 0.5 && canvas.prevBeat <= 0.5) {
+                var nr = canvas.beatRings.slice()
+                nr.push({ r: 130, a: 1.0, w: 0.6 + Math.min(1.4, a.bass + a.beat) })
+                canvas.beatRings = nr
             }
             canvas.prevBeat = a.beat
             var upd = []
             for (var ri = 0; ri < canvas.beatRings.length; ri++) {
-                var R = { r: canvas.beatRings[ri].r + 0.016 * 820, a: canvas.beatRings[ri].a - 0.016 * 1.5 }
+                var R = { r: canvas.beatRings[ri].r + 0.016 * 820,
+                          a: canvas.beatRings[ri].a - 0.016 * 1.5,
+                          w: canvas.beatRings[ri].w }
                 if (R.a <= 0) continue
                 var rc = lerpColRGB(Math.min(1, (R.r - 130) / 560))
                 ctx.strokeStyle = rgbaStr(rc.r, rc.g, rc.b, R.a * 0.6)
-                ctx.lineWidth = 6 + R.a * 12
+                ctx.lineWidth = (6 + R.a * 12) * R.w
                 ctx.beginPath(); ctx.arc(cx, cy, R.r, 0, Math.PI * 2); ctx.stroke()
                 upd.push(R)
             }
             canvas.beatRings = upd
-            var orbR = 130 + a.level * 120
-            var grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, orbR * 1.7)
+            // Orb halo pulses with beat+bass (level); mids/highs add a slight breathe (tone).
+            var orbR = 130 + a.level * 130 + a.tone * 22
+            var haloScale = 1.7 + a.tone * 0.35
+            var grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, orbR * haloScale)
             grd.addColorStop(0, rgbaStr(viz.c2[0], viz.c2[1], viz.c2[2], 0.95))
             grd.addColorStop(0.4, rgbaStr(viz.c1[0], viz.c1[1], viz.c1[2], 0.78))
             grd.addColorStop(1, "rgba(0,0,0,0)")
             ctx.fillStyle = grd
-            ctx.beginPath(); ctx.arc(cx, cy, orbR * 1.7, 0, Math.PI * 2); ctx.fill()
+            ctx.beginPath(); ctx.arc(cx, cy, orbR * haloScale, 0, Math.PI * 2); ctx.fill()
             // The bright white center dot is distracting behind centered lyrics — skip it when dimmed.
             if (!viz.dim) {
                 ctx.fillStyle = "rgba(255,255,255,0.92)"

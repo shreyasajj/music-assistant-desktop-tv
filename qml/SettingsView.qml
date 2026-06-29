@@ -1,20 +1,20 @@
-// qml/SettingsView.qml — pre-fills current settings so saving never clobbers an
-// existing token. Fields seed from settingsController's readable properties.
+// qml/SettingsView.qml — pre-fills current settings (never clobbers the token) and
+// is fully keyboard/D-pad navigable: Up/Down move between controls, Space/Enter
+// activates (toggle / open list / Save), Up from the first field exits to the tabs.
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
 Item {
     id: root
-
-    function fieldBg(active) {
-        return active ? Qt.rgba(1, 1, 1, 0.1) : Qt.rgba(1, 1, 1, 0.06)
-    }
+    signal requestTopbar()                       // Up from the first field -> tabs
+    function focusFirst() { host.forceActiveFocus() }
+    onVisibleChanged: if (visible) Qt.callLater(focusFirst)
 
     ColumnLayout {
         anchors.centerIn: parent
-        spacing: 24
-        width: 900
+        spacing: 20
+        width: 980
 
         Text {
             text: "Settings"
@@ -37,18 +37,45 @@ Item {
             }
         }
 
-        Field { id: host; placeholderText: "MA host"; text: settingsController.host }
-        Field { id: port; placeholderText: "MA port"; text: String(settingsController.port) }
-        Field { id: token; placeholderText: "MA token (optional)"; text: settingsController.token; echoMode: TextInput.PasswordEchoOnEdit }
-        Field { id: gport; placeholderText: "Guest port"; text: String(settingsController.guestPort) }
+        Field {
+            id: host; placeholderText: "MA host"; text: settingsController.host
+            KeyNavigation.down: port
+            Keys.onUpPressed: function (e) { root.requestTopbar(); e.accepted = true }
+        }
+        Field {
+            id: port; placeholderText: "MA port"; text: String(settingsController.port)
+            KeyNavigation.up: host; KeyNavigation.down: token
+        }
+        Field {
+            id: token; placeholderText: "MA token (optional)"; text: settingsController.token
+            echoMode: TextInput.PasswordEchoOnEdit
+            KeyNavigation.up: port; KeyNavigation.down: gport
+        }
+        Field {
+            id: gport; placeholderText: "Guest port"; text: String(settingsController.guestPort)
+            KeyNavigation.up: token; KeyNavigation.down: lrclibSwitch.control
+        }
 
         component OptionToggle: RowLayout {
             property alias checked: sw.checked
+            property alias control: sw
+            property var navUp: null
+            property var navDown: null
             property string label: ""
-            Layout.topMargin: 4
+            Layout.topMargin: 2
             Layout.fillWidth: true
             spacing: 16
-            Switch { id: sw }
+            Switch {
+                id: sw
+                KeyNavigation.up: parent.navUp
+                KeyNavigation.down: parent.navDown
+                Rectangle {                       // focus ring
+                    anchors.fill: parent; anchors.margins: -6; radius: 10; z: -1
+                    color: "transparent"
+                    border.color: sw.activeFocus ? Theme.a1 : "transparent"
+                    border.width: 3
+                }
+            }
             Text {
                 text: parent.label
                 color: Theme.fg
@@ -59,18 +86,21 @@ Item {
         }
 
         OptionToggle { id: lrclibSwitch; checked: settingsController.lrclibFallback
-            label: "Fetch lyrics from LRCLIB when Music Assistant has none" }
+            label: "Fetch lyrics from LRCLIB when Music Assistant has none"
+            navUp: gport; navDown: compactSwitch.control }
         OptionToggle { id: compactSwitch; checked: settingsController.compactLyrics
-            label: "Compact lyrics — show only the previous, current and next two lines" }
+            label: "Compact lyrics — show only the previous, current and next two lines"
+            navUp: lrclibSwitch.control; navDown: artPumpSwitch.control }
         OptionToggle { id: artPumpSwitch; checked: settingsController.artPump
-            label: "Pump the Now Playing artwork with the song's bass" }
+            label: "Pump the Now Playing artwork with the beat and bass"
+            navUp: compactSwitch.control; navDown: behindSwitch.control }
         OptionToggle { id: behindSwitch; checked: settingsController.vizBehindLyrics
-            label: "Show the visualizer behind the lyrics" }
+            label: "Show the visualizer behind the lyrics"
+            navUp: artPumpSwitch.control; navDown: deviceBox }
 
-        // Visualizer audio capture device (for the live bars / art pump)
         ColumnLayout {
             Layout.fillWidth: true
-            Layout.topMargin: 8
+            Layout.topMargin: 6
             spacing: 8
             Text {
                 text: "Visualizer audio source"
@@ -90,6 +120,12 @@ Item {
                     else if (v === "__auto__") currentIndex = 1
                     else { var i = model.indexOf(v); currentIndex = i >= 0 ? i : 0 }
                 }
+                // Up/Down navigate to other controls when the list is closed;
+                // Enter/Space opens it (then the popup handles Up/Down).
+                Keys.onUpPressed: function (e) { if (!popup.visible) { behindSwitch.control.forceActiveFocus(); e.accepted = true } }
+                Keys.onDownPressed: function (e) { if (!popup.visible) { saveBtn.forceActiveFocus(); e.accepted = true } }
+                Keys.onReturnPressed: function (e) { if (!popup.visible) { popup.open(); e.accepted = true } }
+                Keys.onSpacePressed: function (e) { if (!popup.visible) { popup.open(); e.accepted = true } }
                 contentItem: Text {
                     leftPadding: 18; rightPadding: 44
                     text: deviceBox.displayText
@@ -102,8 +138,8 @@ Item {
                     implicitHeight: 56
                     radius: 14
                     color: Qt.rgba(1, 1, 1, 0.06)
-                    border.color: Qt.rgba(1, 1, 1, 0.12)
-                    border.width: 1
+                    border.color: deviceBox.activeFocus ? Theme.a1 : Qt.rgba(1, 1, 1, 0.12)
+                    border.width: deviceBox.activeFocus ? 2 : 1
                 }
                 delegate: ItemDelegate {
                     width: deviceBox.width
@@ -139,11 +175,13 @@ Item {
 
         Button {
             id: saveBtn
+            property bool saved: false
             text: "Save"
             font.pixelSize: Theme.md
-            Layout.topMargin: 8
+            Layout.topMargin: 6
+            KeyNavigation.up: deviceBox
             contentItem: Text {
-                text: saveBtn.text
+                text: saveBtn.saved ? "Saved ✓" : "Save"
                 color: "#06121a"
                 font.pixelSize: Theme.md
                 font.weight: Font.Bold
@@ -151,7 +189,7 @@ Item {
                 verticalAlignment: Text.AlignVCenter
             }
             background: Rectangle {
-                implicitWidth: 220
+                implicitWidth: 240
                 implicitHeight: 64
                 radius: 40
                 gradient: Gradient {
@@ -159,12 +197,19 @@ Item {
                     GradientStop { position: 0; color: Theme.a1 }
                     GradientStop { position: 1; color: Theme.a2 }
                 }
+                border.color: saveBtn.activeFocus ? "#ffffff" : "transparent"
+                border.width: saveBtn.activeFocus ? 3 : 0
             }
-            onClicked: settingsController.save(host.text, parseInt(port.text) || 0,
-                                               token.text, parseInt(gport.text) || 0,
-                                               lrclibSwitch.checked, compactSwitch.checked,
-                                               artPumpSwitch.checked, behindSwitch.checked,
-                                               deviceBox.valueAt(deviceBox.currentIndex))
+            onClicked: {
+                settingsController.save(host.text, parseInt(port.text) || 0,
+                                        token.text, parseInt(gport.text) || 0,
+                                        lrclibSwitch.checked, compactSwitch.checked,
+                                        artPumpSwitch.checked, behindSwitch.checked,
+                                        deviceBox.valueAt(deviceBox.currentIndex))
+                saveBtn.saved = true
+                savedTimer.restart()
+            }
+            Timer { id: savedTimer; interval: 1600; onTriggered: saveBtn.saved = false }
         }
     }
 }

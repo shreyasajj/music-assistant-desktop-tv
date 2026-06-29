@@ -71,9 +71,10 @@ class GuestController(QObject):
         self.enabledChanged.emit()
 
     async def _disable(self):
-        if self._mode == "party":
+        # Turn guest access off everywhere so guests can no longer request anything.
+        if self._ma.has_party():
             await self._ma.party_set_guest_access(False)
-        elif self._server is not None:
+        if self._server is not None:
             await self._server.stop()
             self._server = None
         self._url = ""
@@ -81,6 +82,11 @@ class GuestController(QObject):
         self._mode = None
         self._enabled = False
         self.enabledChanged.emit()
+
+    async def ensure_disabled(self):
+        """Start in a known-off state so the (off) Guest button reflects reality."""
+        if self._ma.has_party():
+            await self._ma.party_set_guest_access(False)
 
     def _display_url(self):
         if not self._url:
@@ -192,6 +198,10 @@ def main() -> int:
                 await ma.connect()
             except Exception as e:
                 print(f"[warn] MA connect failed: {e}")
+            try:
+                await guest.ensure_disabled()   # start with guest access off
+            except Exception as e:
+                print(f"[warn] could not reset guest access: {e}")
             try:
                 analyzer.start()
             except Exception as e:
