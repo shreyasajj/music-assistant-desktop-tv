@@ -1,0 +1,76 @@
+# Flatpak manifest for Bigscreen Jukebox.
+#
+# Uses the freedesktop runtime and the self-contained PySide6 wheel (the same
+# approach as the working AppImage), so Qt/QML ships with the app rather than the
+# runtime. PortAudio is built so the visualizer's audio capture works.
+#
+# BUILD/TEST LOCALLY (needs a Linux box with flatpak + flatpak-builder):
+#   1. Generate the pinned Python deps (offline builds require hashes):
+#        pip install flatpak-pip-generator   # or use the script from flatpak/flatpak-builder-tools
+#        python flatpak-pip-generator --runtime=org.freedesktop.Sdk//24.08 \
+#               --requirements-file=flatpak/requirements.txt \
+#               --output flatpak/python3-requirements
+#      -> produces flatpak/python3-requirements.json next to this manifest.
+#   2. Build + install:
+#        flatpak install flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+#        flatpak-builder --user --install --force-clean build-dir \
+#               flatpak/io.github.shreyasajj.MusicAssistantDesktopTv.yaml
+#        flatpak run io.github.shreyasajj.MusicAssistantDesktopTv
+#
+# For the Flathub submission, replace the app module's `dir` source with a pinned
+# git source (see the commented block below) and move this manifest +
+# python3-requirements.json into your flathub/ PR.
+id: io.github.shreyasajj.MusicAssistantDesktopTv
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: bigscreen-jukebox
+
+finish-args:
+  - --share=ipc
+  - --share=network                 # Music Assistant websocket, LRCLIB, guest web server
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio             # PipeWire (pulse) — visualizer audio capture
+  - --device=dri                    # GPU for the QML scene graph
+  - --env=BIGSCREEN_QML_DIR=/app/share/bigscreen-jukebox/qml
+
+cleanup:
+  - '/include'
+  - '/lib/pkgconfig'
+  - '/share/man'
+  - '*.a'
+  - '*.la'
+
+modules:
+  - name: portaudio
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://files.portaudio.com/archives/pa_stable_v190700_20210406.tgz
+        sha256: 47efbf42c77c19a05d22e627d42873e991ec0c1357219c0d74ce6a2948cb2def
+
+  # Pinned Python dependencies (PySide6, qasync, aiohttp, numpy, sounddevice,
+  # music-assistant-client, qrcode). Generated with flatpak-pip-generator from
+  # flatpak/requirements.txt — see the header. Commit the generated JSON next to
+  # this manifest before building.
+  - python3-requirements.json
+
+  - name: bigscreen-jukebox
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --no-build-isolation --prefix=${FLATPAK_DEST} --no-deps .
+      - install -d ${FLATPAK_DEST}/share/bigscreen-jukebox
+      - cp -r qml ${FLATPAK_DEST}/share/bigscreen-jukebox/qml
+      - install -Dm644 flatpak/io.github.shreyasajj.MusicAssistantDesktopTv.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo/
+      - install -Dm644 flatpak/io.github.shreyasajj.MusicAssistantDesktopTv.desktop -t ${FLATPAK_DEST}/share/applications/
+      - install -Dm644 flatpak/io.github.shreyasajj.MusicAssistantDesktopTv.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.shreyasajj.MusicAssistantDesktopTv.svg
+    sources:
+      # Local testing: build straight from this checkout.
+      - type: dir
+        path: ..
+      # Flathub submission: pin to a tagged release instead, e.g.
+      # - type: git
+      #   url: https://github.com/shreyasajj/music-assistant-desktop-tv.git
+      #   tag: v0.1.0
+      #   commit: <full-sha-of-the-tag>

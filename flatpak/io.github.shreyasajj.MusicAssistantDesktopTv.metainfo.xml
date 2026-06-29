@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.shreyasajj.MusicAssistantDesktopTv</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <name>Bigscreen Jukebox</name>
+  <summary>A fullscreen 10-foot TV client for Music Assistant</summary>
+
+  <description>
+    <p>
+      Bigscreen Jukebox is a fullscreen, TV- and remote-friendly client for a
+      Music Assistant server. It connects directly to your server and turns any
+      screen into a 10-foot music experience controllable with a D-pad remote.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Now Playing with album art, transport controls and an Up Next queue</li>
+      <li>Search your Music Assistant providers and play instantly</li>
+      <li>Karaoke lyrics with an optional LRCLIB fallback when none are provided</li>
+      <li>Audio visualizer (radial pulse, flow lines, bars), optionally behind the lyrics</li>
+      <li>Guest mode: a corner QR code lets guests add songs from their phones</li>
+    </ul>
+    <p>
+      This is an unofficial, third-party client and is not affiliated with the
+      Music Assistant project.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">io.github.shreyasajj.MusicAssistantDesktopTv.desktop</launchable>
+
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+    <category>Player</category>
+  </categories>
+
+  <keywords>
+    <keyword>music</keyword>
+    <keyword>jukebox</keyword>
+    <keyword>lyrics</keyword>
+    <keyword>visualizer</keyword>
+    <keyword>tv</keyword>
+  </keywords>
+
+  <url type="homepage">https://github.com/shreyasajj/music-assistant-desktop-tv</url>
+  <url type="bugtracker">https://github.com/shreyasajj/music-assistant-desktop-tv/issues</url>
+  <url type="vcs-browser">https://github.com/shreyasajj/music-assistant-desktop-tv</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/shreyasajj/music-assistant-desktop-tv/main/docs/screenshots/now-playing.png</image>
+      <caption>Now Playing with album art, transport and the Up Next queue</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/shreyasajj/music-assistant-desktop-tv/main/docs/screenshots/lyrics.png</image>
+      <caption>Karaoke lyrics</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/shreyasajj/music-assistant-desktop-tv/main/docs/screenshots/visualizer.png</image>
+      <caption>Audio visualizer</caption>
+    </screenshot>
+  </screenshots>
+
+  <content_rating type="oars-1.1"/>
+
+  <developer id="io.github.shreyasajj">
+    <name>shreyasajj</name>
+  </developer>
+
+  <releases>
+    <release version="0.1.0" date="2026-06-29">
+      <description>
+        <p>Initial release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

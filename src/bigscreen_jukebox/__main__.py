@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio
+import os
 import sys
 from pathlib import Path
 from PySide6.QtGui import QGuiApplication
@@ -12,8 +13,12 @@ from .audio_analysis import AudioAnalyzer
 from .guest_server import GuestServer, local_ip
 
 def _qml_dir() -> Path:
-    # In a PyInstaller bundle the qml/ folder is shipped alongside the code
-    # (added via --add-data "qml:qml"); otherwise it's at the repo root.
+    # System/Flatpak installs set BIGSCREEN_QML_DIR (e.g. /app/share/.../qml).
+    # In a PyInstaller bundle the qml/ folder ships alongside the code
+    # (--add-data "qml:qml"); otherwise it's at the repo root.
+    env = os.environ.get("BIGSCREEN_QML_DIR")
+    if env:
+        return Path(env)
     if getattr(sys, "frozen", False):
         return Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "qml"
     return Path(__file__).resolve().parent.parent.parent / "qml"

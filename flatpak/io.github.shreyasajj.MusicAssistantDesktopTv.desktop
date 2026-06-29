@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Bigscreen Jukebox
+Comment=Music Assistant on the big screen
+Exec=bigscreen-jukebox
+Icon=io.github.shreyasajj.MusicAssistantDesktopTv
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=music;jukebox;lyrics;visualizer;tv;
+X-KDE-FormFactor=mediacenter,tv
