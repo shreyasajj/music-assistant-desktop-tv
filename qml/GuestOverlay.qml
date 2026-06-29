@@ -1,13 +1,18 @@
-// qml/GuestOverlay.qml — corner QR card matching .qr-card in styles.css (white card, dark text)
+// qml/GuestOverlay.qml — corner QR card matching .qr-card in styles.css (white card, dark text).
+// Shown only while guest mode is on; positioned by the parent. `focused` adds the D-pad ring.
 import QtQuick
 import QtQuick.Layouts
 
 Rectangle {
+    id: card
+    property bool focused: false
     visible: guestController.enabled
     width: 212
     height: overlayCol.implicitHeight + 36
     radius: 20
     color: "#ffffff"
+    border.color: focused ? Qt.rgba(0, 224 / 255, 198 / 255, 1) : "transparent"
+    border.width: focused ? 3 : 0
 
     ColumnLayout {
         id: overlayCol
@@ -42,4 +47,6 @@ Rectangle {
             Layout.fillWidth: true
         }
     }
+
+    MouseArea { anchors.fill: parent; onClicked: guestController.toggle() }
 }

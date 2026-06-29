@@ -8,6 +8,16 @@ Item {
     id: viz
     property string mode: "radial"
     property real vt: 0
+    property real beatMul: 1.0                       // BEAT slider multiplier
+    readonly property var modes: ["radial", "flow", "bars"]
+
+    function cycleMode(d) {
+        var i = modes.indexOf(mode)
+        mode = modes[(i + d + modes.length) % modes.length]
+    }
+
+    // Source label: "Live feed" once the analyzer is receiving audio, else "Simulated".
+    readonly property bool live: audioAnalyzer.energy > 0.001
 
     Rectangle { anchors.fill: parent; color: "#050507" }
 
@@ -57,6 +67,8 @@ Item {
                     bars[i] = Math.max(0.02, Math.min(1.15, v))
                 }
             }
+            beat *= viz.beatMul
+            level = Math.min(1.4, beat * (0.5 + energy * 0.6))
             return { energy: energy, beat: beat, level: level, bars: bars }
         }
 
@@ -198,6 +210,63 @@ Item {
         running: viz.visible
         repeat: true
         onTriggered: { viz.vt += 0.016; canvas.requestPaint() }
+    }
+
+    // beat control — match .beat-ctrl (BEAT slider + source toggle), top-left
+    Row {
+        anchors { left: parent.left; top: parent.top; leftMargin: 56; topMargin: 128 }
+        spacing: 14
+
+        Rectangle {            // .beat-slider
+            height: 60
+            width: beatSliderRow.implicitWidth + 52
+            radius: 40
+            color: Qt.rgba(10 / 255, 10 / 255, 16 / 255, 0.5)
+            border.color: Qt.rgba(1, 1, 1, 0.08)
+            border.width: 1
+            Row {
+                id: beatSliderRow
+                anchors.centerIn: parent
+                spacing: 18
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "BEAT"; font.pixelSize: 19; font.weight: Font.ExtraBold
+                    font.letterSpacing: 3; color: Qt.rgba(1, 1, 1, 0.55)
+                }
+                Slider {
+                    id: beatSlider
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 210
+                    from: 0; to: 2.4; stepSize: 0.05; value: 1
+                    onValueChanged: viz.beatMul = value
+                }
+            }
+        }
+
+        Rectangle {            // .source-btn
+            height: 60
+            width: sourceRow.implicitWidth + 48
+            radius: 40
+            color: viz.live ? Qt.rgba(0, 224 / 255, 198 / 255, 0.12) : Qt.rgba(10 / 255, 10 / 255, 16 / 255, 0.5)
+            border.color: viz.live ? Theme.a1 : Qt.rgba(1, 1, 1, 0.1)
+            border.width: 1
+            Row {
+                id: sourceRow
+                anchors.centerIn: parent
+                spacing: 12
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 11; height: 11; radius: 6
+                    color: viz.live ? Theme.a1 : Qt.rgba(1, 1, 1, 0.4)
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: viz.live ? "Live feed" : "Simulated"
+                    font.pixelSize: 21; font.weight: Font.Bold
+                    color: viz.live ? Theme.a1 : Qt.rgba(1, 1, 1, 0.7)
+                }
+            }
+        }
     }
 
     // mode bar — match .mode-bar in styles.css

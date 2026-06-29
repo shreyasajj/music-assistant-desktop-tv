@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtCore import QObject, Signal, Property, Slot
 from .config import load_settings, save_settings, default_config_path
 from .ma_client import MaClient
@@ -58,6 +59,8 @@ class GuestController(QObject):
 
 
 class SettingsController(QObject):
+    changed = Signal()
+
     def __init__(self, settings):
         super().__init__()
         self._s = settings
@@ -69,9 +72,20 @@ class SettingsController(QObject):
         self._s.ma_token = token
         self._s.guest_port = guest_port
         save_settings(self._s, default_config_path())
+        self.changed.emit()
+
+    # Readable properties so the Settings screen pre-fills current values
+    # instead of showing blank defaults and clobbering a saved token on save.
+    host = Property(str, lambda s: s._s.ma_host, notify=changed)
+    port = Property(int, lambda s: s._s.ma_port, notify=changed)
+    token = Property(str, lambda s: s._s.ma_token, notify=changed)
+    guestPort = Property(int, lambda s: s._s.guest_port, notify=changed)
 
 
 def main() -> int:
+    # A non-native style is required for the custom control backgrounds in the QML
+    # (TextField/Button/ComboBox) to render; the native style ignores them.
+    QQuickStyle.setStyle("Basic")
     app = QGuiApplication(sys.argv)
 
     try:

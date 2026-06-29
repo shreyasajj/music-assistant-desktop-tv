@@ -50,6 +50,7 @@ class MaClient(QObject):
                     self.volumeChanged, self.queueChanged, self.lyricsJsonChanged):
             sig.emit()
 
+    @Slot(str)
     def select_player(self, player_id: str) -> None:
         if player_id != self._active:
             self._active = player_id
@@ -98,6 +99,11 @@ class MaClient(QObject):
         state = getattr(evt, "data", None)
         if isinstance(state, dict) and state.get("player_id") == self._active:
             self.update_from_player_state(state)
+
+    @Slot(str)
+    def search(self, query: str) -> None:
+        # QML-callable entry point: schedule the async search on the running loop.
+        asyncio.ensure_future(self.searchAsync(query))
 
     async def searchAsync(self, query: str):
         results = await self._dispatch("search", query=query, limit=20)

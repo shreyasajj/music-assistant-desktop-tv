@@ -73,3 +73,23 @@ def test_set_search_results(client):
     client.set_search_results([{"title": "T", "artist": "A", "uri": "u"}])
     assert client.searchResults[0]["uri"] == "u"
     assert seen == [1]
+
+def test_select_player_is_qml_invokable(client):
+    # QML can only call methods registered as Qt slots; a plain method is invisible.
+    from PySide6.QtCore import QMetaMethod
+    meta = client.metaObject()
+    slots = {meta.method(i).name().data().decode()
+             for i in range(meta.methodCount())
+             if meta.method(i).methodType() == QMetaMethod.MethodType.Slot}
+    assert "select_player" in slots
+
+async def test_search_slot_populates_results(client):
+    async def fake_dispatch(command, **a):
+        assert command == "search"
+        return [{"name": "Hit", "artist": "A", "album": "Al", "uri": "u1", "image": "i"}]
+    client._dispatch = fake_dispatch
+    client.search("anything")          # the QML-callable sync slot
+    import asyncio
+    await asyncio.sleep(0)             # let the scheduled coroutine run
+    assert client.searchResults[0]["title"] == "Hit"
+    assert client.searchResults[0]["uri"] == "u1"

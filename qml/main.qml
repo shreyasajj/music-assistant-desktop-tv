@@ -1,3 +1,7 @@
+// qml/main.qml — app shell faithful to bigscreen-jukebox/ prototype.
+// Authored at a fixed 1920x1080 stage and scaled to fill any screen (4K-ready),
+// matching the prototype's fitToViewport(). Topbar = wordmark + centered tabs +
+// player chip (Now Playing only) + guest button / corner QR card.
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -7,59 +11,129 @@ ApplicationWindow {
     visible: true
     visibility: Window.FullScreen
     color: Theme.bg
-    property var tabs: ["Now Playing", "Search", "Lyrics", "Visualizer", "Settings"]
 
+    readonly property var tabs: ["Now Playing", "Search", "Lyrics", "Visualizer", "Settings"]
+    readonly property int guestIdx: tabs.length            // topbar focus index of the guest button
+    property bool guestOn: guestController.enabled
+
+    // ── 1920x1080 stage, scaled & centered to the window (4K scaling) ──────────
     Item {
-        id: root
-        anchors.fill: parent
+        id: stage
+        width: 1920
+        height: 1080
+        property real s: Math.min(win.width / 1920, win.height / 1080)
+        transform: [
+            Scale { xScale: stage.s; yScale: stage.s },
+            Translate { x: (win.width - 1920 * stage.s) / 2; y: (win.height - 1080 * stage.s) / 2 }
+        ]
+
         focus: true
+        // focusZone: "content" | "topbar";  topIdx: 0..tabs-1 = tabs, guestIdx = guest button
+        property string focusZone: "content"
+        property int topIdx: 0
+        property bool playerMenuOpen: false
 
-        Keys.onRightPressed: stack.currentIndex = Math.min(stack.currentIndex + 1, tabs.length - 1)
-        Keys.onLeftPressed: stack.currentIndex = Math.max(stack.currentIndex - 1, 0)
-        Keys.onDigit1Pressed: stack.currentIndex = 0
-        Keys.onDigit2Pressed: stack.currentIndex = 1
-        Keys.onDigit3Pressed: stack.currentIndex = 2
-        Keys.onDigit4Pressed: stack.currentIndex = 3
-        Keys.onDigit5Pressed: stack.currentIndex = 4
-        Keys.onPressed: function(event) { if (event.key === Qt.Key_G) guestController.toggle() }
+        function go(i) {
+            stack.currentIndex = i
+            focusZone = "content"
+            playerMenuOpen = false
+        }
+        function enterTopbar() {
+            focusZone = "topbar"
+            topIdx = stack.currentIndex
+            playerMenuOpen = false
+        }
+        function activateTop() {
+            if (topIdx === win.guestIdx) guestController.toggle()
+            else go(topIdx)
+        }
 
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 0
+        // ── Keyboard / TV-remote D-pad ─────────────────────────────────────────
+        Keys.onPressed: function (e) {
+            if (e.key === Qt.Key_G) { guestController.toggle(); e.accepted = true; return }
+            if (e.key >= Qt.Key_1 && e.key <= Qt.Key_5) { go(e.key - Qt.Key_1); e.accepted = true; return }
 
-            RowLayout {                                   // tab bar
-                Layout.fillWidth: true
-                Layout.margins: 32
-                spacing: 48
-                Repeater {
-                    model: win.tabs
-                    Text {
-                        text: modelData
-                        font.pixelSize: Theme.md
-                        color: stack.currentIndex === index ? Theme.fg : Theme.muted
-                        MouseArea { anchors.fill: parent; onClicked: stack.currentIndex = index }
-                    }
-                }
+            if (stage.focusZone === "topbar") {
+                if (e.key === Qt.Key_Left)  { stage.topIdx = Math.max(0, stage.topIdx - 1); e.accepted = true }
+                else if (e.key === Qt.Key_Right) { stage.topIdx = Math.min(win.guestIdx, stage.topIdx + 1); e.accepted = true }
+                else if (e.key === Qt.Key_Down)  { stage.focusZone = "content"; e.accepted = true }
+                else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space) { stage.activateTop(); e.accepted = true }
+                return
             }
 
-            StackLayout {
-                id: stack
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                currentIndex: 0
-                NowPlaying { }
-                Search { }
-                Lyrics { }
-                Visualizer { }
-                SettingsView { }
+            // content zone
+            if (e.key === Qt.Key_Up) {
+                if (stack.currentIndex === 1 && searchScreen.focusIdx > 0) searchScreen.moveFocus(-1)
+                else stage.enterTopbar()
+                e.accepted = true; return
+            }
+            if (e.key === Qt.Key_Space) { maClient.playPause(); e.accepted = true; return }
+
+            if (stack.currentIndex === 0) {            // Now Playing
+                if (e.key === Qt.Key_Right) { maClient.next(); e.accepted = true }
+                else if (e.key === Qt.Key_Left) { maClient.previous(); e.accepted = true }
+                else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { maClient.playPause(); e.accepted = true }
+            } else if (stack.currentIndex === 1) {     // Search
+                if (e.key === Qt.Key_Down) { searchScreen.moveFocus(1); e.accepted = true }
+                else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { searchScreen.activate(); e.accepted = true }
+            } else if (stack.currentIndex === 3) {     // Visualizer
+                if (e.key === Qt.Key_Right) { vizScreen.cycleMode(1); e.accepted = true }
+                else if (e.key === Qt.Key_Left) { vizScreen.cycleMode(-1); e.accepted = true }
             }
         }
 
+        // ── Screens ────────────────────────────────────────────────────────────
+        StackLayout {
+            id: stack
+            anchors.fill: parent
+            currentIndex: 0
+            NowPlaying { guestOn: win.guestOn }
+            Search { id: searchScreen }
+            Lyrics { }
+            Visualizer { id: vizScreen }
+            SettingsView { }
+        }
+
+        // ── Top bar ──────────────────────────────────────────────────────────────
+        TopBar {
+            id: topbar
+            anchors { top: parent.top; left: parent.left; right: parent.right }
+            z: 60
+            currentIndex: stack.currentIndex
+            focusZone: stage.focusZone
+            topIdx: stage.topIdx
+            tabs: win.tabs
+            guestIdx: win.guestIdx
+            guestOn: win.guestOn
+            playerName: stage.activePlayerName()
+            onTabActivated: function (index) { stage.go(index) }
+            onChipClicked: stage.playerMenuOpen = !stage.playerMenuOpen
+            onGuestClicked: guestController.toggle()
+        }
+
+        // Player dropdown menu (Now Playing) — overlays under the chip
+        PlayerMenu {
+            id: playerMenu
+            z: 80
+            open: stage.playerMenuOpen && stack.currentIndex === 0
+            guestOn: win.guestOn
+            anchors { top: topbar.bottom; topMargin: -8; right: parent.right; rightMargin: 64 }
+            onRequestClose: stage.playerMenuOpen = false
+        }
+
+        // ── Guest corner QR card (replaces the guest button when on) ──────────────
         GuestOverlay {
-            anchors.top: parent.top
-            anchors.right: parent.right
-            anchors.margins: 40
-            z: 100
+            id: qrCard
+            anchors { top: parent.top; right: parent.right; topMargin: 20; rightMargin: 48 }
+            z: 70
+            focused: stage.focusZone === "topbar" && stage.topIdx === win.guestIdx
+        }
+
+        function activePlayerName() {
+            var ps = maClient.players
+            for (var i = 0; i < ps.length; i++)
+                if (ps[i].id === maClient.activePlayerId) return ps[i].name || ps[i].id
+            return ps.length > 0 ? (ps[0].name || ps[0].id) : "No player"
         }
     }
 }

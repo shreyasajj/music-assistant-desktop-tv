@@ -13,6 +13,9 @@ import QtQuick.Layouts
 Item {
     id: root
 
+    // true while guest mode is on — drops the queue below the corner QR card
+    property bool guestOn: false
+
     // ── Background: blurred art + gradient overlay ──────────────────────────
     // QML doesn't have a built-in blur without Qt5Compat or QtGraphicalEffects;
     // we fake depth-of-field blur with an overscaled, low-opacity image —
@@ -323,62 +326,20 @@ Item {
                 }
             }
 
-            // ── Player picker (ComboBox below transport) ─────────────────────
-            ComboBox {
-                id: playerPicker
-                Layout.topMargin: 24
-                Layout.preferredWidth: 400
-
-                // Build a plain string list from players array [{id, name}]
-                model: {
-                    var names = []
-                    var players = maClient.players
-                    for (var i = 0; i < players.length; i++) {
-                        names.push(players[i].name || players[i].id)
-                    }
-                    return names
-                }
-
-                // Sync currentIndex to activePlayerId
-                onActivated: function(idx) {
-                    var players = maClient.players
-                    if (idx >= 0 && idx < players.length) {
-                        try { maClient.select_player(players[idx].id) } catch(e) {}
-                    }
-                }
-
-                Connections {
-                    target: maClient
-                    function onActivePlayerIdChanged() {
-                        var players = maClient.players
-                        for (var i = 0; i < players.length; i++) {
-                            if (players[i].id === maClient.activePlayerId) {
-                                playerPicker.currentIndex = i
-                                break
-                            }
-                        }
-                    }
-                }
-
-                background: Rectangle {
-                    color: Qt.rgba(1, 1, 1, 0.06)
-                    border.color: Qt.rgba(1, 1, 1, 0.1)
-                    border.width: 1
-                    radius: 40
-                }
-
-                contentItem: Text {
-                    leftPadding: 22
-                    text: playerPicker.displayText !== "" ? playerPicker.displayText : "No player"
-                    color: Qt.rgba(1, 1, 1, 0.78)
-                    font.pixelSize: Theme.sm
-                    verticalAlignment: Text.AlignVCenter
-                    elide: Text.ElideRight
-                }
-
-                visible: maClient.players.length > 0
-            }
         }
+    }
+
+    // ── Up Next queue (.queue) ───────────────────────────────────────────────
+    // top:124 right:48; drops below the corner QR card in guest mode.
+    UpNextQueue {
+        guestOn: root.guestOn
+        anchors {
+            top: parent.top
+            topMargin: root.guestOn ? 336 : 124   // 124 + 212 QR-card clearance
+            right: parent.right
+            rightMargin: 48
+        }
+        Behavior on anchors.topMargin { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
