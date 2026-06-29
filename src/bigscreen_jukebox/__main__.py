@@ -65,9 +65,9 @@ class SettingsController(QObject):
         super().__init__()
         self._s = settings
 
-    @Slot(str, int, str, int, bool, bool, bool, bool)
+    @Slot(str, int, str, int, bool, bool, bool, bool, str)
     def save(self, host, port, token, guest_port, lrclib_fallback,
-             compact_lyrics, art_pump, viz_behind_lyrics):
+             compact_lyrics, art_pump, viz_behind_lyrics, audio_device):
         self._s.ma_host = host
         self._s.ma_port = port
         self._s.ma_token = token
@@ -76,8 +76,24 @@ class SettingsController(QObject):
         self._s.compact_lyrics = compact_lyrics
         self._s.art_pump = art_pump
         self._s.viz_behind_lyrics = viz_behind_lyrics
+        self._s.audio_device = audio_device
         save_settings(self._s, default_config_path())
         self.changed.emit()
+
+    @staticmethod
+    def _input_device_names():
+        """Names of capture-capable audio devices, for the Settings picker."""
+        try:
+            import sounddevice as sd
+            names, seen = [], set()
+            for d in sd.query_devices():
+                n = d.get("name") or ""
+                if d.get("max_input_channels", 0) > 0 and n and n not in seen:
+                    seen.add(n)
+                    names.append(n)
+            return names
+        except Exception:
+            return []
 
     @Slot(bool)
     def setVizBehindLyrics(self, enabled):
@@ -96,6 +112,11 @@ class SettingsController(QObject):
     compactLyrics = Property(bool, lambda s: s._s.compact_lyrics, notify=changed)
     artPump = Property(bool, lambda s: s._s.art_pump, notify=changed)
     vizBehindLyrics = Property(bool, lambda s: s._s.viz_behind_lyrics, notify=changed)
+    audioDevice = Property(str, lambda s: s._s.audio_device, notify=changed)
+    # First entry = auto (system monitor); the rest are capture-device names.
+    audioDevices = Property("QVariantList",
+                            lambda s: ["Auto (system monitor)"] + s._input_device_names(),
+                            notify=changed)
 
 
 def main() -> int:

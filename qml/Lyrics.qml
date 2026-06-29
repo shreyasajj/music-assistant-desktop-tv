@@ -32,11 +32,14 @@ Item {
     // clamp so the first line reads as "active" before the first timestamp passes
     readonly property int act: Math.max(0, active)
 
-    // optional visualizer background
+    // optional visualizer background — recolored to magenta/violet so it doesn't
+    // blend with the teal active lyric line.
     VizCanvas {
         anchors.fill: parent
         dim: true
         visible: settingsController.vizBehindLyrics
+        c1: [255, 61, 166]
+        c2: [124, 77, 255]
     }
 
     // soft glow (matches .lyrics-glow), hidden when the viz background is on

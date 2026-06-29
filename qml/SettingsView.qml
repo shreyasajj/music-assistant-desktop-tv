@@ -67,6 +67,72 @@ Item {
         OptionToggle { id: behindSwitch; checked: settingsController.vizBehindLyrics
             label: "Show the visualizer behind the lyrics" }
 
+        // Visualizer audio capture device (for the live bars / art pump)
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.topMargin: 8
+            spacing: 8
+            Text {
+                text: "Visualizer audio capture device"
+                color: Qt.rgba(1, 1, 1, 0.7)
+                font.pixelSize: Theme.sm
+            }
+            ComboBox {
+                id: deviceBox
+                Layout.fillWidth: true
+                model: settingsController.audioDevices
+                font.pixelSize: Theme.sm
+                Component.onCompleted: {
+                    var i = model.indexOf(settingsController.audioDevice)
+                    currentIndex = (settingsController.audioDevice === "" || i < 0) ? 0 : i
+                }
+                contentItem: Text {
+                    leftPadding: 18; rightPadding: 44
+                    text: deviceBox.displayText
+                    color: Theme.fg
+                    font.pixelSize: Theme.sm
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+                }
+                background: Rectangle {
+                    implicitHeight: 56
+                    radius: 14
+                    color: Qt.rgba(1, 1, 1, 0.06)
+                    border.color: Qt.rgba(1, 1, 1, 0.12)
+                    border.width: 1
+                }
+                delegate: ItemDelegate {
+                    width: deviceBox.width
+                    highlighted: deviceBox.highlightedIndex === index
+                    contentItem: Text {
+                        text: modelData; color: Theme.fg; font.pixelSize: Theme.sm; elide: Text.ElideRight
+                    }
+                    background: Rectangle {
+                        color: highlighted ? Qt.rgba(1, 1, 1, 0.1) : Qt.rgba(15 / 255, 15 / 255, 21 / 255, 1)
+                    }
+                }
+                popup: Popup {
+                    y: deviceBox.height + 4
+                    width: deviceBox.width
+                    implicitHeight: Math.min(contentItem.implicitHeight + 12, 420)
+                    padding: 6
+                    contentItem: ListView {
+                        clip: true
+                        implicitHeight: contentHeight
+                        model: deviceBox.popup.visible ? deviceBox.delegateModel : null
+                        currentIndex: deviceBox.highlightedIndex
+                        ScrollIndicator.vertical: ScrollIndicator {}
+                    }
+                    background: Rectangle {
+                        radius: 12
+                        color: Qt.rgba(15 / 255, 15 / 255, 21 / 255, 0.98)
+                        border.color: Qt.rgba(1, 1, 1, 0.12)
+                        border.width: 1
+                    }
+                }
+            }
+        }
+
         Button {
             id: saveBtn
             text: "Save"
@@ -93,7 +159,8 @@ Item {
             onClicked: settingsController.save(host.text, parseInt(port.text) || 0,
                                                token.text, parseInt(gport.text) || 0,
                                                lrclibSwitch.checked, compactSwitch.checked,
-                                               artPumpSwitch.checked, behindSwitch.checked)
+                                               artPumpSwitch.checked, behindSwitch.checked,
+                                               deviceBox.currentIndex === 0 ? "" : deviceBox.currentText)
         }
     }
 }

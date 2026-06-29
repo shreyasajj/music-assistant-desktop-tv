@@ -11,6 +11,10 @@ Item {
     property real beatMul: VizState.beatMul
     // When true, paint a translucent backdrop so text on top stays readable.
     property bool dim: false
+    // Palette as [r,g,b]; defaults to the teal->magenta accents. Override (e.g.
+    // behind lyrics) so the visualizer doesn't blend with the teal active line.
+    property var c1: [0, 224, 198]
+    property var c2: [255, 61, 166]
 
     readonly property bool live: audioAnalyzer.energy > 0.001
 
@@ -23,9 +27,10 @@ Item {
 
         function rgbaStr(r, g, b, a) { return "rgba(" + r + "," + g + "," + b + "," + a + ")" }
         function lerpColRGB(t) {
-            return { r: Math.round(0 + 255 * t),
-                     g: Math.round(224 + (61 - 224) * t),
-                     b: Math.round(198 + (166 - 198) * t) }
+            var a = viz.c1, b = viz.c2
+            return { r: Math.round(a[0] + (b[0] - a[0]) * t),
+                     g: Math.round(a[1] + (b[1] - a[1]) * t),
+                     b: Math.round(a[2] + (b[2] - a[2]) * t) }
         }
 
         function getAudioData() {
@@ -70,7 +75,7 @@ Item {
             for (var i = 0; i < spokes; i++) {
                 var ang = i / spokes * Math.PI * 2
                 var len = 200 + a.energy * 170 + (i % 2 ? a.beat * 120 : 0)
-                ctx.strokeStyle = rgbaStr(0, 224, 198, 0.045 + a.energy * 0.07)
+                ctx.strokeStyle = rgbaStr(viz.c1[0], viz.c1[1], viz.c1[2], 0.045 + a.energy * 0.07)
                 ctx.lineWidth = 2
                 ctx.beginPath()
                 ctx.moveTo(Math.cos(ang) * 120, Math.sin(ang) * 120)
@@ -95,8 +100,8 @@ Item {
             canvas.beatRings = upd
             var orbR = 130 + a.level * 120
             var grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, orbR * 1.7)
-            grd.addColorStop(0, rgbaStr(255, 61, 166, 0.95))
-            grd.addColorStop(0.4, rgbaStr(0, 224, 198, 0.78))
+            grd.addColorStop(0, rgbaStr(viz.c2[0], viz.c2[1], viz.c2[2], 0.95))
+            grd.addColorStop(0.4, rgbaStr(viz.c1[0], viz.c1[1], viz.c1[2], 0.78))
             grd.addColorStop(1, "rgba(0,0,0,0)")
             ctx.fillStyle = grd
             ctx.beginPath(); ctx.arc(cx, cy, orbR * 1.7, 0, Math.PI * 2); ctx.fill()
@@ -120,13 +125,15 @@ Item {
                                   + Math.sin(k * 15 + t * 1.7) * amp * 0.22
                     if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
                 }
-                ctx.strokeStyle = rgbaStr(col.r, col.g, col.b, 0.92)
+                // Glow via layered strokes — shadowBlur is software-rendered in QML
+                // Canvas and stalls badly at 1080p, which froze the Flow mode.
+                ctx.strokeStyle = rgbaStr(col.r, col.g, col.b, 0.16)
+                ctx.lineWidth = 16 + a.level * 14
+                ctx.stroke()
+                ctx.strokeStyle = rgbaStr(col.r, col.g, col.b, 0.95)
                 ctx.lineWidth = 4 + a.level * 5
-                ctx.shadowColor = rgbaStr(col.r, col.g, col.b, 1)
-                ctx.shadowBlur = 24 + a.level * 34
                 ctx.stroke()
             }
-            ctx.shadowBlur = 0
         }
 
         function drawBars(ctx, W, H, a) {
@@ -141,7 +148,7 @@ Item {
                 var col = lerpColRGB(i / (N - 1))
                 var grd = ctx.createLinearGradient(0, baseY - h, 0, baseY)
                 grd.addColorStop(0, rgbaStr(col.r, col.g, col.b, 1))
-                grd.addColorStop(1, rgbaStr(0, 224, 198, 0.18))
+                grd.addColorStop(1, rgbaStr(viz.c1[0], viz.c1[1], viz.c1[2], 0.18))
                 ctx.fillStyle = grd
                 roundRect(ctx, x + gap / 2, baseY - h, bw - gap, h, 6); ctx.fill()
                 ctx.globalAlpha = 0.13; ctx.fillStyle = rgbaStr(col.r, col.g, col.b, 1)
