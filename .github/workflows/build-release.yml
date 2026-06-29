@@ -1,11 +1,20 @@
 name: Build & Release
 
-# Build a Linux desktop bundle and publish a GitHub release on every push to
-# main/master (full release) or dev (pre-release). Produces a portable tarball
-# plus an AppImage you can run on KDE Plasma.
+# Build Linux desktop bundles (x86_64 + aarch64) and publish a GitHub release.
+# Each arch produces a portable tarball plus an AppImage you can run on KDE Plasma.
+#
+# Three ways a release is produced:
+#   - push to main/master   -> rolling "build-<N>" full release
+#   - push to dev           -> rolling "build-<N>" pre-release
+#   - push a tag like v1.2.0 -> a named "v1.2.0" release (versioned, sticky)
+#                              tags with a hyphen (v1.2.0-rc1) are pre-releases
+#
+# To cut a versioned release:
+#   git tag -a v1.2.0 -m "v1.2.0"   &&   git push origin v1.2.0
 on:
   push:
     branches: [main, master, dev]
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -13,7 +22,15 @@ permissions:
 
 jobs:
   build-linux:
-    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false       # one arch failing shouldn't kill the other
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: x86_64
+          - runner: ubuntu-22.04-arm   # GitHub-hosted native arm64 runner (free for public repos)
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
@@ -44,21 +61,28 @@ jobs:
 
       - name: Build with PyInstaller
         run: |
+          # Entry point is launcher.py (NOT src/bigscreen_jukebox/__main__.py):
+          # PyInstaller runs its entry script as the top-level __main__ with no
+          # parent package, which breaks the relative imports in __main__.py.
+          # launcher.py imports the package absolutely so those imports resolve.
           pyinstaller --noconfirm --clean \
             --name bigscreen-jukebox \
             --collect-all PySide6 \
+            --collect-submodules bigscreen_jukebox \
             --add-data "qml:qml" \
             --add-data "packaging:packaging" \
             --paths src \
-            src/bigscreen_jukebox/__main__.py
+            launcher.py
 
       - name: Package portable tarball
         run: |
-          tar -czf bigscreen-jukebox-linux-x86_64.tar.gz -C dist bigscreen-jukebox
-          ls -lh bigscreen-jukebox-linux-x86_64.tar.gz
+          tar -czf bigscreen-jukebox-linux-${{ matrix.arch }}.tar.gz -C dist bigscreen-jukebox
+          ls -lh bigscreen-jukebox-linux-${{ matrix.arch }}.tar.gz
 
       - name: Build AppImage
         continue-on-error: true        # best-effort; the tarball is always produced
+        env:
+          ARCH: ${{ matrix.arch }}
         run: |
           set -eux
           APPDIR=AppDir
@@ -93,29 +117,54 @@ jobs:
             "$APPDIR/bigscreen-jukebox.png"
           cp "$APPDIR/bigscreen-jukebox.png" "$APPDIR/.DirIcon"
 
-          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
-          chmod +x appimagetool-x86_64.AppImage
-          APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 \
-            ./appimagetool-x86_64.AppImage "$APPDIR" Bigscreen_Jukebox-x86_64.AppImage
-          ls -lh Bigscreen_Jukebox-x86_64.AppImage
+          # appimagetool ships a matching binary per arch (x86_64 / aarch64)
+          wget -q "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${ARCH}.AppImage"
+          chmod +x "appimagetool-${ARCH}.AppImage"
+          APPIMAGE_EXTRACT_AND_RUN=1 ARCH="${ARCH}" \
+            "./appimagetool-${ARCH}.AppImage" "$APPDIR" "Bigscreen_Jukebox-${ARCH}.AppImage"
+          ls -lh "Bigscreen_Jukebox-${ARCH}.AppImage"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bigscreen-jukebox-${{ matrix.arch }}
+          path: |
+            bigscreen-jukebox-linux-${{ matrix.arch }}.tar.gz
+            Bigscreen_Jukebox-${{ matrix.arch }}.AppImage
+          if-no-files-found: warn       # AppImage is best-effort; tarball always exists
+
+  release:
+    needs: build-linux
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true          # flatten every arch into one folder
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: build-${{ github.run_number }}
-          name: Build ${{ github.run_number }} (${{ github.ref_name }})
-          # dev builds are marked pre-release; main/master are full releases
-          prerelease: ${{ github.ref_name == 'dev' }}
+          # Tag push (v1.2.0) -> sticky versioned release named after the tag.
+          # Branch push -> rolling "build-<N>" release.
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('build-{0}', github.run_number) }}
+          name: ${{ github.ref_type == 'tag' && format('Bigscreen Jukebox {0}', github.ref_name) || format('Build {0} ({1})', github.run_number, github.ref_name) }}
+          # Pre-release if pushed from dev, or a tag with a hyphen (e.g. v1.2.0-rc1).
+          prerelease: ${{ github.ref_name == 'dev' || contains(github.ref_name, '-') }}
           fail_on_unmatched_files: false
           body: |
             Automated build from `${{ github.ref_name }}` (`${{ github.sha }}`).
 
-            **Download for KDE Plasma:**
-            - `Bigscreen_Jukebox-x86_64.AppImage` — `chmod +x` it and run.
-            - or the `.tar.gz` — extract and run `bigscreen-jukebox/bigscreen-jukebox`.
+            **Download for KDE Plasma** (pick your CPU architecture):
+            - **x86_64** (Intel/AMD): `Bigscreen_Jukebox-x86_64.AppImage` — `chmod +x` it and run.
+            - **aarch64** (ARM, e.g. Raspberry Pi 4/5, ARM SBCs): `Bigscreen_Jukebox-aarch64.AppImage` — `chmod +x` it and run.
+            - or the matching `.tar.gz` — extract and run `bigscreen-jukebox/bigscreen-jukebox`.
 
             First run: open **Settings**, enter your Music Assistant host/token, pick a player.
             Live visualizer/art-pump need `libportaudio2` on the system (optional).
           files: |
-            bigscreen-jukebox-linux-x86_64.tar.gz
-            Bigscreen_Jukebox-x86_64.AppImage
+            artifacts/*.tar.gz
+            artifacts/*.AppImage

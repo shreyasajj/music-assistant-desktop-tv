@@ -159,7 +159,10 @@ class MaClient(QObject):
         await self._session.player_queues.play_media(
             self._active, uri, option=QueueOption(option))
 
-    async def connect(self):
+    # NB: not named `connect`/`disconnect` — those collide with QObject's own
+    # connect/disconnect and break signal wiring on newer PySide6 (e.g. the
+    # aarch64 wheel resolves `someSignal.connect(...)` to this method instead).
+    async def connect_server(self):
         from music_assistant_client import MusicAssistantClient
         url = server_url(self._settings.ma_host, self._settings.ma_port)
         self._session = MusicAssistantClient(url, None, self._settings.ma_token or None)
@@ -371,7 +374,7 @@ class MaClient(QObject):
             self._lyrics_json = json.dumps(asdict(parse_lyrics(raw)))
             self.lyricsJsonChanged.emit()
 
-    async def disconnect(self):
+    async def disconnect_server(self):
         if self._pos_timer is not None:
             self._pos_timer.stop()
             self._pos_timer = None

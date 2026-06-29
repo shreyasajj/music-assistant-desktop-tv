@@ -23,11 +23,12 @@ mode, all driveable with a D-pad remote. Built with PySide6 / QML.
 
 ## Download
 
-Grab the latest from the [Releases page](https://github.com/shreyasajj/music-assistant-desktop-tv/releases)
+Grab the latest from the [Releases page](https://github.com/shreyasajj/MusicAssistantDesktopTv/releases)
 (full releases from `main`, pre-releases from `dev`):
 
-- **AppImage** — `chmod +x Bigscreen_Jukebox-x86_64.AppImage` and run it (KDE Plasma & most Linux desktops).
-- **Tarball** — extract and run `bigscreen-jukebox/bigscreen-jukebox`.
+- **AppImage** — `chmod +x Bigscreen_Jukebox-<arch>.AppImage` and run it (KDE Plasma & most Linux desktops).
+  Pick `x86_64` (Intel/AMD) or `aarch64` (ARM — Raspberry Pi 4/5 and other ARM SBCs).
+- **Tarball** — extract and run `bigscreen-jukebox/bigscreen-jukebox` (also published per arch).
 
 For the live visualizer / art-pump, install `libportaudio2` (optional). **First run:**
 open **Settings**, enter your Music Assistant host + long-lived token, and pick a default player.
