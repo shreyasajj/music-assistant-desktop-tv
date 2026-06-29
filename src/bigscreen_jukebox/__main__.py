@@ -219,7 +219,7 @@ def main() -> int:
     if use_qasync:
         async def startup():
             try:
-                await ma.connect()
+                await ma.connect_server()
             except Exception as e:
                 print(f"[warn] MA connect failed: {e}")
             try:
