@@ -42,6 +42,20 @@ Item {
         Field { id: token; placeholderText: "MA token (optional)"; text: settingsController.token; echoMode: TextInput.PasswordEchoOnEdit }
         Field { id: gport; placeholderText: "Guest port"; text: String(settingsController.guestPort) }
 
+        RowLayout {
+            Layout.topMargin: 4
+            Layout.fillWidth: true
+            spacing: 16
+            Switch { id: lrclibSwitch; checked: settingsController.lrclibFallback }
+            Text {
+                text: "Fetch lyrics from LRCLIB when Music Assistant has none"
+                color: Theme.fg
+                font.pixelSize: Theme.sm
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+            }
+        }
+
         Button {
             id: saveBtn
             text: "Save"
@@ -66,7 +80,8 @@ Item {
                 }
             }
             onClicked: settingsController.save(host.text, parseInt(port.text) || 0,
-                                               token.text, parseInt(gport.text) || 0)
+                                               token.text, parseInt(gport.text) || 0,
+                                               lrclibSwitch.checked)
         }
     }
 }

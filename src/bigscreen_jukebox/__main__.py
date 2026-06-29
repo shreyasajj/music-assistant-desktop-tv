@@ -65,12 +65,13 @@ class SettingsController(QObject):
         super().__init__()
         self._s = settings
 
-    @Slot(str, int, str, int)
-    def save(self, host, port, token, guest_port):
+    @Slot(str, int, str, int, bool)
+    def save(self, host, port, token, guest_port, lrclib_fallback):
         self._s.ma_host = host
         self._s.ma_port = port
         self._s.ma_token = token
         self._s.guest_port = guest_port
+        self._s.lrclib_fallback = lrclib_fallback
         save_settings(self._s, default_config_path())
         self.changed.emit()
 
@@ -80,6 +81,7 @@ class SettingsController(QObject):
     port = Property(int, lambda s: s._s.ma_port, notify=changed)
     token = Property(str, lambda s: s._s.ma_token, notify=changed)
     guestPort = Property(int, lambda s: s._s.guest_port, notify=changed)
+    lrclibFallback = Property(bool, lambda s: s._s.lrclib_fallback, notify=changed)
 
 
 def main() -> int:
@@ -122,6 +124,17 @@ def main() -> int:
                 analyzer.start()
             except Exception as e:
                 print(f"[warn] audio capture unavailable: {e}")
+
+            # LRCLIB fallback: when a track changes and MA has no lyrics, fetch them.
+            import aiohttp
+            from . import lrclib
+            http = aiohttp.ClientSession()
+
+            async def fetcher(artist, title, album, duration_ms):
+                return await lrclib.fetch_lyrics(http, artist, title, album, duration_ms)
+
+            ma.nowPlayingChanged.connect(
+                lambda: asyncio.ensure_future(ma.resolve_lyrics_if_missing(fetcher)))
 
         loop.create_task(startup())
         with loop:
