@@ -1,3 +1,4 @@
+import asyncio
 import json
 import pytest
 from bigscreen_jukebox.config import Settings
@@ -53,19 +54,45 @@ def test_missing_media_is_safe(client):
     assert client.durationMs == 0
     assert json.loads(client.lyricsJson)["lines"] == []
 
-def test_actions_dispatch_expected_commands(client, monkeypatch):
-    calls = []
-    monkeypatch.setattr(client, "_dispatch", lambda command, **a: calls.append((command, a)))
-    client.select_player("living")
+class _FakePlayers:
+    def __init__(self): self.calls = []
+    async def play_pause(self, pid): self.calls.append(("play_pause", pid))
+    async def next_track(self, pid): self.calls.append(("next", pid))
+    async def previous_track(self, pid): self.calls.append(("previous", pid))
+    async def seek(self, pid, pos): self.calls.append(("seek", pid, pos))
+    async def volume_set(self, pid, lvl): self.calls.append(("volume", pid, lvl))
+
+class _FakeQueues:
+    def __init__(self): self.calls = []
+    async def play_media(self, queue_id, media, option=None, **k):
+        self.calls.append(("play_media", queue_id, media, getattr(option, "value", option)))
+
+class _FakeMusic:
+    async def search(self, query, limit=20):
+        class R: tracks = []
+        return R()
+
+class _FakeSession:
+    def __init__(self):
+        self.players = _FakePlayers()
+        self.player_queues = _FakeQueues()
+        self.music = _FakeMusic()
+
+async def test_actions_call_expected_controllers(client):
+    fake = _FakeSession()
+    client._session = fake
+    client._active = "living"
     client.playPause(); client.next(); client.previous()
     client.seek(30000); client.setVolume(40)
     client.playNow("library://track/5"); client.addToQueue("library://track/6")
-    names = [c[0] for c in calls]
-    assert "play_pause" in names and "next" in names and "previous" in names
-    assert ("seek", {"player_id": "living", "position_ms": 30000}) in calls
-    assert ("set_volume", {"player_id": "living", "level": 40}) in calls
-    assert ("play_media", {"player_id": "living", "uri": "library://track/5", "enqueue": "play"}) in calls
-    assert ("play_media", {"player_id": "living", "uri": "library://track/6", "enqueue": "add"}) in calls
+    await asyncio.sleep(0)
+    assert ("play_pause", "living") in fake.players.calls
+    assert ("next", "living") in fake.players.calls
+    assert ("previous", "living") in fake.players.calls
+    assert ("seek", "living", 30) in fake.players.calls            # ms -> seconds
+    assert ("volume", "living", 40) in fake.players.calls
+    assert ("play_media", "living", "library://track/5", "play") in fake.player_queues.calls
+    assert ("play_media", "living", "library://track/6", "add") in fake.player_queues.calls
 
 def test_set_search_results(client):
     seen = []
@@ -110,12 +137,23 @@ async def test_resolve_disabled_by_setting():
     assert json.loads(c.lyricsJson)["lines"] == []
 
 async def test_search_slot_populates_results(client):
-    async def fake_dispatch(command, **a):
-        assert command == "search"
-        return [{"name": "Hit", "artist": "A", "album": "Al", "uri": "u1", "image": "i"}]
-    client._dispatch = fake_dispatch
+    class _Artist:
+        name = "A"
+    class _Album:
+        name = "Al"
+    class _Track:
+        name = "Hit"; uri = "u1"; artists = [_Artist()]; album = _Album()
+    class _Results:
+        tracks = [_Track()]
+    class _Music:
+        async def search(self, query, limit=20): return _Results()
+    class _Session:
+        music = _Music()
+        def get_media_item_image_url(self, item): return "i"
+    client._session = _Session()
     client.search("anything")          # the QML-callable sync slot
-    import asyncio
     await asyncio.sleep(0)             # let the scheduled coroutine run
     assert client.searchResults[0]["title"] == "Hit"
     assert client.searchResults[0]["uri"] == "u1"
+    assert client.searchResults[0]["artist"] == "A"
+    assert client.searchResults[0]["album"] == "Al"

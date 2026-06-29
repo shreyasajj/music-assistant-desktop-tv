@@ -1,10 +1,31 @@
 from __future__ import annotations
 import asyncio
 import json
+import re
 from dataclasses import asdict
 from PySide6.QtCore import QObject, Signal, Property, Slot
 from .config import Settings
 from .lyrics import parse_lyrics
+
+
+def server_url(host: str, port: int) -> str:
+    """Build the http(s) base URL the music_assistant_client expects.
+
+    The client converts http->ws and appends /ws itself, so we must hand it an
+    http(s) base (not ws://). Accepts a bare IP/host, or one already carrying a
+    scheme, and appends the port unless the host already includes one.
+    """
+    h = (host or "").strip().rstrip("/")
+    if h.startswith(("http://", "https://")):
+        base = h
+    elif h.startswith(("ws://", "wss://")):
+        base = "http" + h[2:]          # ws://->http://, wss://->https://
+    else:
+        base = f"http://{h}"
+    if re.search(r":\d+$", base):
+        return base
+    return f"{base}:{port}"
+
 
 class MaClient(QObject):
     connectedChanged = Signal()
@@ -55,70 +76,193 @@ class MaClient(QObject):
         if player_id != self._active:
             self._active = player_id
             self.activePlayerIdChanged.emit()
+            if self._session is not None:
+                self._refresh()
+                self._spawn(self._reload_queue_items())
 
-    def _dispatch(self, command: str, **args):
-        # Replaced by live implementation in connect(); default raises if no session.
-        if self._session is None:
-            raise RuntimeError("not connected")
-        return self._session.send_command(command, **args)
+    def _spawn(self, coro) -> None:
+        """Schedule a client coroutine on the running loop (QML slots are sync)."""
+        try:
+            asyncio.ensure_future(coro)
+        except RuntimeError:
+            # No running loop (e.g. unit tests without a live session); drop it.
+            if hasattr(coro, "close"):
+                coro.close()
 
     def set_search_results(self, items: list[dict]) -> None:
         self._search_results = list(items)
         self.searchResultsChanged.emit()
 
     @Slot()
-    def playPause(self): self._dispatch("play_pause", player_id=self._active)
+    def playPause(self):
+        if self._session and self._active:
+            self._spawn(self._session.players.play_pause(self._active))
+
     @Slot()
-    def next(self): self._dispatch("next", player_id=self._active)
+    def next(self):
+        if self._session and self._active:
+            self._spawn(self._session.players.next_track(self._active))
+
     @Slot()
-    def previous(self): self._dispatch("previous", player_id=self._active)
+    def previous(self):
+        if self._session and self._active:
+            self._spawn(self._session.players.previous_track(self._active))
+
     @Slot(int)
-    def seek(self, position_ms: int): self._dispatch("seek", player_id=self._active, position_ms=position_ms)
+    def seek(self, position_ms: int):
+        if self._session and self._active:
+            self._spawn(self._session.players.seek(self._active, int(position_ms / 1000)))
+
     @Slot(int)
-    def setVolume(self, level: int): self._dispatch("set_volume", player_id=self._active, level=level)
+    def setVolume(self, level: int):
+        if self._session and self._active:
+            self._spawn(self._session.players.volume_set(self._active, int(level)))
+
     @Slot(str)
-    def playNow(self, uri: str): self._dispatch("play_media", player_id=self._active, uri=uri, enqueue="play")
+    def playNow(self, uri: str):
+        self._spawn(self._play_media(uri, "play"))
+
     @Slot(str)
-    def addToQueue(self, uri: str): self._dispatch("play_media", player_id=self._active, uri=uri, enqueue="add")
+    def addToQueue(self, uri: str):
+        self._spawn(self._play_media(uri, "add"))
+
+    async def _play_media(self, uri: str, option: str) -> None:
+        if not self._session or not self._active:
+            return
+        from music_assistant_models.enums import QueueOption
+        await self._session.player_queues.play_media(
+            self._active, uri, option=QueueOption(option))
 
     async def connect(self):
-        from music_assistant_client import MusicAssistantClient  # import name verified in Task 13
-        url = f"ws://{self._settings.ma_host}:{self._settings.ma_port}/ws"
-        self._session = MusicAssistantClient(url, self._settings.ma_token or None)
+        from music_assistant_client import MusicAssistantClient
+        url = server_url(self._settings.ma_host, self._settings.ma_port)
+        self._session = MusicAssistantClient(url, None, self._settings.ma_token or None)
         await self._session.connect()
         self._connected = True
         self.connectedChanged.emit()
-        self._players = [{"id": p.player_id, "name": p.display_name}
-                         for p in self._session.players]
-        self.playersChanged.emit()
+        # start_listening fetches initial state then streams events; run it forever.
+        ready = asyncio.Event()
+        self._listen_task = asyncio.ensure_future(self._session.start_listening(ready))
+        try:
+            await asyncio.wait_for(ready.wait(), timeout=15)
+        except asyncio.TimeoutError:
+            pass
+        self._session.subscribe(self._on_event)
+        self._reload_players()
         if not self._active and self._players:
             self.select_player(self._players[0]["id"])
-        self._session.subscribe(lambda evt: self._on_event(evt))
+        self._refresh()
+        self._spawn(self._reload_queue_items())
 
-    def _on_event(self, evt):
-        state = getattr(evt, "data", None)
-        if isinstance(state, dict) and state.get("player_id") == self._active:
-            self.update_from_player_state(state)
+    def _on_event(self, event):
+        name = getattr(getattr(event, "event", None), "name", "")
+        if name in ("PLAYER_ADDED", "PLAYER_REMOVED", "PLAYER_UPDATED"):
+            self._reload_players()
+        oid = getattr(event, "object_id", None)
+        if name.startswith("QUEUE") or oid == self._active:
+            self._refresh()
+            if name in ("QUEUE_ADDED", "QUEUE_ITEMS_UPDATED"):
+                self._spawn(self._reload_queue_items())
+
+    def _reload_players(self):
+        if not self._session:
+            return
+        self._players = [{"id": p.player_id, "name": p.name}
+                         for p in self._session.players if getattr(p, "available", True)]
+        self.playersChanged.emit()
+
+    def _refresh(self):
+        """Read the active player + queue from the client controllers and publish."""
+        if not self._session or not self._active:
+            return
+        p = self._session.players.get(self._active)
+        q = self._session.player_queues.get(self._active)
+        cm = getattr(p, "current_media", None) if p is not None else None
+        new_title = (getattr(cm, "title", "") if cm else "") or ""
+        track_changed = new_title != self._title
+        if cm:
+            self._title = new_title
+            self._artist = cm.artist or ""
+            self._album = cm.album or ""
+            self._art = cm.image_url or ""
+            self._dur = int((cm.duration or 0) * 1000)
+        else:
+            self._title = self._artist = self._album = self._art = ""
+            self._dur = 0
+        if p is not None:
+            st = getattr(p.playback_state, "value", p.playback_state)
+            self._playing = (st == "playing")
+            self._volume = int(p.volume_level or 0)
+        if q is not None and q.elapsed_time is not None:
+            self._pos = int(q.elapsed_time * 1000)
+        elif cm is not None and getattr(cm, "elapsed_time", None) is not None:
+            self._pos = int(cm.elapsed_time * 1000)
+        else:
+            self._pos = 0
+        # MA PlayerMedia carries no lyrics; clear on track change so the LRCLIB
+        # fallback (if enabled) re-fetches for the new track.
+        if track_changed:
+            self._lyrics_json = json.dumps({"lines": [], "synced": False})
+            self.lyricsJsonChanged.emit()
+        for sig in (self.nowPlayingChanged, self.positionMsChanged,
+                    self.isPlayingChanged, self.volumeChanged):
+            sig.emit()
+
+    async def _reload_queue_items(self):
+        if not self._session or not self._active:
+            return
+        try:
+            q = self._session.player_queues.get(self._active)
+            start = (q.current_index + 1) if (q and q.current_index is not None) else 0
+            items = await self._session.player_queues.get_queue_items(
+                self._active, limit=10, offset=start)
+        except Exception:
+            return
+        self._queue = [self._queue_item_dict(it) for it in (items or [])]
+        self.queueChanged.emit()
+
+    def _queue_item_dict(self, it) -> dict:
+        artist = ""
+        mi = getattr(it, "media_item", None)
+        arts = getattr(mi, "artists", None) if mi is not None else None
+        if arts:
+            artist = getattr(arts[0], "name", "") or ""
+        img = ""
+        try:
+            img = self._session.get_media_item_image_url(it) or ""
+        except Exception:
+            img = ""
+        return {"title": getattr(it, "name", "") or "", "artist": artist,
+                "duration_ms": int((getattr(it, "duration", 0) or 0) * 1000), "image": img}
 
     @Slot(str)
     def search(self, query: str) -> None:
         # QML-callable entry point: schedule the async search on the running loop.
-        asyncio.ensure_future(self.searchAsync(query))
+        self._spawn(self.searchAsync(query))
 
     async def searchAsync(self, query: str):
-        results = await self._dispatch("search", query=query, limit=20)
-        self.set_search_results([
-            {"title": r.get("name", ""), "artist": r.get("artist", ""),
-             "album": r.get("album", ""), "uri": r.get("uri", ""), "image": r.get("image", "")}
-            for r in (results or [])
-        ])
+        if not self._session:
+            return
+        res = await self._session.music.search(query, limit=20)
+        items = []
+        for t in (getattr(res, "tracks", None) or []):
+            arts = getattr(t, "artists", None)
+            artist = getattr(arts[0], "name", "") if arts else ""
+            album = getattr(getattr(t, "album", None), "name", "") or ""
+            try:
+                img = self._session.get_media_item_image_url(t) or ""
+            except Exception:
+                img = ""
+            items.append({"title": t.name, "artist": artist, "album": album,
+                          "uri": t.uri, "image": img})
+        self.set_search_results(items)
 
     async def search_for_guest(self, query: str) -> list[dict]:
         await self.searchAsync(query)
         return list(self._search_results)
 
     async def addToQueue_async(self, uri: str) -> None:
-        await self._dispatch("play_media", player_id=self._active, uri=uri, enqueue="add")
+        await self._play_media(uri, "add")
 
     async def resolve_lyrics_if_missing(self, fetcher) -> None:
         """If lyrics are empty and the LRCLIB fallback is enabled, fetch via
