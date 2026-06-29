@@ -2185,7 +2185,7 @@ git commit -m "feat: wire LRCLIB fallback into live loop and settings toggle"
 
 ---
 
-## Task 17: Prototype parity — top bar, Up Next queue, player menu, focus zones, 4K scaling
+## Task 17: Prototype parity — top bar, Up Next queue, player menu, focus zones, 4K scaling ✅ DONE (commit dbd9bbc)
 
 **Files:**
 - Create: `qml/TopBar.qml`, `qml/UpNextQueue.qml`, `qml/PlayerMenu.qml`
