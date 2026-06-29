@@ -38,7 +38,7 @@ Rectangle {
             Layout.fillWidth: true
         }
         Text {
-            text: guestController.joinUrl
+            text: guestController.displayUrl
             color: "#0a8f80"
             font.pixelSize: 16
             Layout.alignment: Qt.AlignHCenter

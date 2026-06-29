@@ -183,6 +183,27 @@ async def test_reload_queue_reports_true_upcoming_count(client):
     assert client.queueCount == 11          # not capped at the old limit of 10
     assert client.queue[0]["title"] == "t0"
 
+def test_has_party_false_without_session(client):
+    assert client.has_party() is False
+
+async def test_party_helpers(client):
+    class _Cfg:
+        def __init__(self): self.saved = None
+        async def save_provider_config(self, domain, values, instance_id=None):
+            self.saved = (domain, values, instance_id); return object()
+    class _Prov:
+        domain = "party"
+    class _Session:
+        def __init__(self): self.config = _Cfg(); self.providers = [_Prov()]
+        async def send_command(self, cmd, **k):
+            assert cmd == "party/url"
+            return "https://app.music-assistant.io/?join=ABC"
+    client._session = _Session()
+    assert client.has_party() is True
+    assert await client.party_url() == "https://app.music-assistant.io/?join=ABC"
+    assert await client.party_set_guest_access(True) is True
+    assert client._session.config.saved == ("party", {"enable_guest_access": True}, "party")
+
 async def test_search_slot_populates_results(client):
     class _Artist:
         name = "A"

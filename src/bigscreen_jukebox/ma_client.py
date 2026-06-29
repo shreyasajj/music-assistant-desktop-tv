@@ -312,6 +312,38 @@ class MaClient(QObject):
     async def addToQueue_async(self, uri: str) -> None:
         await self._play_media(uri, "add")
 
+    # ── Party plugin (guest access) ──────────────────────────────────────────
+    # The MA "party" plugin provides a maintained guest-access UI + QR with rate
+    # limiting and (with remote access) off-network access. We prefer it over the
+    # built-in guest server when it's installed.
+    def has_party(self) -> bool:
+        if not self._session:
+            return False
+        try:
+            return any(getattr(p, "domain", None) == "party" for p in self._session.providers)
+        except Exception:
+            return False
+
+    async def party_url(self) -> str | None:
+        """The guest join URL from the party plugin, or None if unavailable/disabled."""
+        if not self._session:
+            return None
+        try:
+            return await self._session.send_command("party/url")
+        except Exception:
+            return None
+
+    async def party_set_guest_access(self, enabled: bool) -> bool:
+        """Toggle the party plugin's guest access. Returns True if it was applied."""
+        if not self._session:
+            return False
+        try:
+            await self._session.config.save_provider_config(
+                "party", {"enable_guest_access": enabled}, instance_id="party")
+            return True
+        except Exception:
+            return False
+
     async def resolve_lyrics_if_missing(self, fetcher) -> None:
         """If lyrics are empty and the LRCLIB fallback is enabled, fetch via
         `fetcher(artist, title, album, duration_ms) -> str | None`, parse, and update."""

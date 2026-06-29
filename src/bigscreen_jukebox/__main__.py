@@ -11,6 +11,7 @@ from .config import load_settings, save_settings, default_config_path
 from .ma_client import MaClient
 from .audio_analysis import AudioAnalyzer
 from .guest_server import GuestServer, local_ip
+from .qr import qr_data_uri
 
 def _qml_dir() -> Path:
     # System/Flatpak installs set BIGSCREEN_QML_DIR (e.g. /app/share/.../qml).
@@ -37,36 +38,59 @@ class GuestController(QObject):
         self._url = ""
         self._qr = ""
         self._server = None
+        self._mode = None      # "party" | "server"
 
     @Slot()
     def toggle(self):
         if not self._enabled:
-            self._server = GuestServer(
-                self._ma.search_for_guest,
-                self._ma.addToQueue_async,
-                self._settings.guest_port)
+            asyncio.ensure_future(self._enable())
+        else:
+            asyncio.ensure_future(self._disable())
 
-            async def _go():
-                await self._server.start(local_ip())
-                self._url = self._server.join_url
-                self._qr = self._server.qr_uri
+    async def _enable(self):
+        # Prefer the Music Assistant "party" plugin (maintained guest UI, rate
+        # limiting, remote access). Fall back to the built-in guest server.
+        if self._ma.has_party():
+            applied = await self._ma.party_set_guest_access(True)
+            url = await self._ma.party_url() if applied else None
+            if url:
+                self._url = url
+                self._qr = qr_data_uri(url)
+                self._mode = "party"
                 self._enabled = True
                 self.enabledChanged.emit()
+                return
+        # Fallback: our embedded LAN guest server
+        self._server = GuestServer(
+            self._ma.search_for_guest, self._ma.addToQueue_async, self._settings.guest_port)
+        await self._server.start(local_ip())
+        self._url = self._server.join_url
+        self._qr = self._server.qr_uri
+        self._mode = "server"
+        self._enabled = True
+        self.enabledChanged.emit()
 
-            asyncio.ensure_future(_go())
-        else:
-            async def _stop():
-                await self._server.stop()
-                self._server = None
-                self._url = ""
-                self._qr = ""
-                self._enabled = False
-                self.enabledChanged.emit()
+    async def _disable(self):
+        if self._mode == "party":
+            await self._ma.party_set_guest_access(False)
+        elif self._server is not None:
+            await self._server.stop()
+            self._server = None
+        self._url = ""
+        self._qr = ""
+        self._mode = None
+        self._enabled = False
+        self.enabledChanged.emit()
 
-            asyncio.ensure_future(_stop())
+    def _display_url(self):
+        if not self._url:
+            return ""
+        from urllib.parse import urlparse
+        return urlparse(self._url).netloc or self._url
 
     enabled = Property(bool, lambda s: s._enabled, notify=enabledChanged)
     joinUrl = Property(str, lambda s: s._url, notify=enabledChanged)
+    displayUrl = Property(str, lambda s: s._display_url(), notify=enabledChanged)
     qrUri = Property(str, lambda s: s._qr, notify=enabledChanged)
 
 
