@@ -102,6 +102,7 @@ ApplicationWindow {
                 id: searchScreen
                 onRequestTopbar: stage.enterTopbar()
                 onRequestResults: { stage.forceActiveFocus(); searchScreen.focusIdx = 0 }
+                onSongPlayed: stage.go(0)        // jump to Now Playing after picking a song
             }
             Lyrics { }
             Visualizer { id: vizScreen }

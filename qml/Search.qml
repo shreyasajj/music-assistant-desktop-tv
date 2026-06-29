@@ -10,6 +10,7 @@ Item {
 
     signal requestTopbar()    // Up from the search box -> exit to the tabs
     signal requestResults()   // Down from the search box -> move into the results
+    signal songPlayed()       // played a result -> jump to Now Playing
 
     function focusInput() { input.forceActiveFocus() }
 
@@ -19,9 +20,13 @@ Item {
         focusIdx = Math.max(0, Math.min(n - 1, focusIdx + d))
         results.positionViewAtIndex(focusIdx, ListView.Contain)
     }
+    function play(uri) {
+        maClient.playNow(uri)
+        songPlayed()
+    }
     function activate() {
         var r = maClient.searchResults[focusIdx]
-        if (r) maClient.playNow(r.uri)
+        if (r) play(r.uri)
     }
     Connections {
         target: maClient
@@ -124,7 +129,7 @@ Item {
             }
             MouseArea {
                 anchors.fill: parent
-                onClicked: { root.focusIdx = index; maClient.playNow(modelData.uri) }
+                onClicked: { root.focusIdx = index; root.play(modelData.uri) }
             }
         }
 
