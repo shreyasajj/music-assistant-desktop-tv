@@ -224,7 +224,10 @@ def main() -> int:
                 print(f"[warn] MA connect failed: {e}")
             try:
                 await guest.poll()              # reflect the current party guest state
-                guest.start_polling()           # ... and keep it in sync with external changes
+                guest.start_polling()           # poll (catches enable, which fires no event)
+                # PROVIDERS_UPDATED fires on disable/reload -> re-check immediately
+                ma.providersUpdated.connect(
+                    lambda: asyncio.ensure_future(guest.poll()))
             except Exception as e:
                 print(f"[warn] guest state sync failed: {e}")
             try:

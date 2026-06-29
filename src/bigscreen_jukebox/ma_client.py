@@ -39,6 +39,7 @@ class MaClient(QObject):
     queueChanged = Signal()
     lyricsJsonChanged = Signal()
     searchResultsChanged = Signal()
+    providersUpdated = Signal()      # a provider was (re)loaded/removed
 
     def __init__(self, settings: Settings):
         super().__init__()
@@ -187,6 +188,9 @@ class MaClient(QObject):
 
     def _on_event(self, event):
         name = getattr(getattr(event, "event", None), "name", "")
+        if name == "PROVIDERS_UPDATED":
+            self.providersUpdated.emit()
+            self._reload_players()
         if name in ("PLAYER_ADDED", "PLAYER_REMOVED", "PLAYER_UPDATED"):
             self._reload_players()
         oid = getattr(event, "object_id", None)
