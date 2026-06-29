@@ -120,6 +120,18 @@ class MaClient(QObject):
     async def addToQueue_async(self, uri: str) -> None:
         await self._dispatch("play_media", player_id=self._active, uri=uri, enqueue="add")
 
+    async def resolve_lyrics_if_missing(self, fetcher) -> None:
+        """If lyrics are empty and the LRCLIB fallback is enabled, fetch via
+        `fetcher(artist, title, album, duration_ms) -> str | None`, parse, and update."""
+        if not self._settings.lrclib_fallback:
+            return
+        if json.loads(self._lyrics_json)["lines"]:
+            return
+        raw = await fetcher(self._artist, self._title, self._album, self._dur)
+        if raw:
+            self._lyrics_json = json.dumps(asdict(parse_lyrics(raw)))
+            self.lyricsJsonChanged.emit()
+
     async def disconnect(self):
         if self._session is not None:
             await self._session.disconnect()

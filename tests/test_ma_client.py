@@ -83,6 +83,32 @@ def test_select_player_is_qml_invokable(client):
              if meta.method(i).methodType() == QMetaMethod.MethodType.Slot}
     assert "select_player" in slots
 
+async def test_resolve_fills_lyrics_when_missing(client):
+    client.update_from_player_state({"player_id": "x",
+        "current_media": {"title": "T", "artist": "A"}})
+    assert json.loads(client.lyricsJson)["lines"] == []
+    async def fake(artist, title, album, dur): return "[00:01.00]hi"
+    await client.resolve_lyrics_if_missing(fake)
+    assert json.loads(client.lyricsJson)["lines"][0]["text"] == "hi"
+
+async def test_resolve_skips_when_lyrics_present(client):
+    client.update_from_player_state({"player_id": "x",
+        "current_media": {"title": "T", "artist": "A", "lyrics": "[00:01.00]x"}})
+    called = False
+    async def fake(*a):
+        nonlocal called; called = True; return "[00:02.00]y"
+    await client.resolve_lyrics_if_missing(fake)
+    assert called is False
+
+async def test_resolve_disabled_by_setting():
+    from bigscreen_jukebox.ma_client import MaClient
+    from bigscreen_jukebox.config import Settings
+    c = MaClient(Settings(lrclib_fallback=False))
+    c.update_from_player_state({"player_id": "x", "current_media": {"title": "T", "artist": "A"}})
+    async def fake(*a): return "[00:01.00]hi"
+    await c.resolve_lyrics_if_missing(fake)
+    assert json.loads(c.lyricsJson)["lines"] == []
+
 async def test_search_slot_populates_results(client):
     async def fake_dispatch(command, **a):
         assert command == "search"
