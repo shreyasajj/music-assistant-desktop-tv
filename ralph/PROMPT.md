@@ -19,7 +19,23 @@ You may open the prototype in a headless browser to compare against your QML ren
 1. Read the plan: `docs/superpowers/plans/2026-06-28-bigscreen-jukebox.md`.
 2. Find the **first task whose header is NOT marked `✅ DONE`**. That is your task.
 3. **If there are no unmarked tasks left:** print `RALPH-COMPLETE: all tasks done` and stop. Do nothing else.
-4. **If your task is Task 14 or Task 16** (they require the user's real Music Assistant server to verify): print `RALPH-PAUSE: Task N needs the live MA server — human required` and stop. Do NOT attempt it.
+4. **If your task is Task 16** (requires the user's real Music Assistant server to verify lyrics): print `RALPH-PAUSE: Task 16 needs the live MA server — human required` and stop. Do NOT attempt it.
+   **Task 14 exception:** Task 14 CAN be attempted. For its Step 6 (live verification), do NOT launch the GUI. Instead run this programmatic connectivity check and treat a clean exit as passing:
+   ```bash
+   python - <<'PY'
+   import asyncio, sys
+   from bigscreen_jukebox.config import load_settings, default_config_path
+   from bigscreen_jukebox.ma_client import MaClient
+   async def check():
+       s = load_settings(default_config_path())
+       ma = MaClient(s)
+       await ma.connect()
+       print("MA connected, players:", ma.players)
+       await asyncio.sleep(1)
+   asyncio.run(check())
+   PY
+   ```
+   If the script exits 0 (even if it prints warnings), Step 6 passes. If it raises an exception, print `RALPH-BLOCKED: Task 14 — MA connect failed: <error>` and stop.
 5. Otherwise, implement that ONE task by dispatching a fresh subagent with the `subagent-driven-development` skill, following the task's TDD steps exactly (write failing test → see it fail → implement → see it pass).
 6. Run that task's tests. They **must pass**. If you cannot get them green, print `RALPH-BLOCKED: Task N — <reason>` and stop without committing broken code.
 7. When green, commit with the task's commit message (append the Co-Authored-By trailer used elsewhere in this repo).

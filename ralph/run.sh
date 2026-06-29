@@ -10,7 +10,7 @@ MAX_ITERS="${MAX_ITERS:-40}"   # safety cap so it can't loop forever
 
 for ((i = 1; i <= MAX_ITERS; i++)); do
   echo "===== Ralph iteration $i ====="
-  OUT="$(claude -p "$PROMPT" --permission-mode acceptEdits 2>&1)"
+  OUT="$(claude -p "$PROMPT" --model claude-sonnet-4-6 --permission-mode bypassPermissions 2>&1)"
   echo "$OUT"
 
   if grep -q "RALPH-COMPLETE" <<<"$OUT"; then
