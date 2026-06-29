@@ -1943,7 +1943,7 @@ git commit -m "feat: settings screen and Bigscreen launcher packaging"
 
 ---
 
-## Task 16: LRCLIB lyrics fallback (when Music Assistant has none)
+## Task 16: LRCLIB lyrics fallback (when Music Assistant has none) ✅ DONE (commit 9a17c8a) — Step 13 live check pending real MA server
 
 **Files:**
 - Create: `src/bigscreen_jukebox/lrclib.py`, `tests/test_lrclib.py`
