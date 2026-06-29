@@ -78,6 +78,12 @@ Item {
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     wrapMode: Text.WordWrap
+                    // Shrink a long line to fit one row instead of wrapping into
+                    // its neighbours; only wraps if it can't fit even at the minimum.
+                    fontSizeMode: Text.HorizontalFit
+                    minimumPixelSize: 40
+                    maximumLineCount: 2
+                    elide: Text.ElideRight
                     text: modelData.text
                     property int d: index - root.active
                     property bool isActive: d === 0 && !root.intro
