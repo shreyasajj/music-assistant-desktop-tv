@@ -73,7 +73,7 @@ Item {
             Layout.topMargin: 8
             spacing: 8
             Text {
-                text: "Visualizer audio capture device"
+                text: "Visualizer audio source"
                 color: Qt.rgba(1, 1, 1, 0.7)
                 font.pixelSize: Theme.sm
             }
@@ -82,9 +82,13 @@ Item {
                 Layout.fillWidth: true
                 model: settingsController.audioDevices
                 font.pixelSize: Theme.sm
+                // index 0 = "" (simulated), 1 = "__auto__", rest = device names
+                function valueAt(i) { return i === 0 ? "" : i === 1 ? "__auto__" : currentText }
                 Component.onCompleted: {
-                    var i = model.indexOf(settingsController.audioDevice)
-                    currentIndex = (settingsController.audioDevice === "" || i < 0) ? 0 : i
+                    var v = settingsController.audioDevice
+                    if (v === "") currentIndex = 0
+                    else if (v === "__auto__") currentIndex = 1
+                    else { var i = model.indexOf(v); currentIndex = i >= 0 ? i : 0 }
                 }
                 contentItem: Text {
                     leftPadding: 18; rightPadding: 44
@@ -160,7 +164,7 @@ Item {
                                                token.text, parseInt(gport.text) || 0,
                                                lrclibSwitch.checked, compactSwitch.checked,
                                                artPumpSwitch.checked, behindSwitch.checked,
-                                               deviceBox.currentIndex === 0 ? "" : deviceBox.currentText)
+                                               deviceBox.valueAt(deviceBox.currentIndex))
         }
     }
 }

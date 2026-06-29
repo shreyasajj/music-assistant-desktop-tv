@@ -16,14 +16,15 @@ Item {
     property var c1: [0, 224, 198]
     property var c2: [255, 61, 166]
 
-    readonly property bool live: audioAnalyzer.energy > 0.001
-
     Canvas {
         id: canvas
         anchors.fill: parent
         property var  beatRings: []
         property real spinAngle: 0
         property real prevBeat:  0
+        // random-beat simulation state
+        property real simNextBeat: 0
+        property real simLastKick: -10
 
         function rgbaStr(r, g, b, a) { return "rgba(" + r + "," + g + "," + b + "," + a + ")" }
         function lerpColRGB(t) {
@@ -33,28 +34,47 @@ Item {
                      b: Math.round(a[2] + (b[2] - a[2]) * t) }
         }
 
-        function getAudioData() {
-            var energy = audioAnalyzer.energy
-            var beat   = audioAnalyzer.beat
-            var level  = audioAnalyzer.level
-            var bars   = audioAnalyzer.bars
-            if (energy < 0.001 || !bars || bars.length === 0) {
-                var t = viz.vt, period = 0.5, phase = (t % period) / period
-                var kick = Math.exp(-phase * 7)
-                energy = 0.5 + 0.32 * Math.sin(t * 0.22) + 0.12 * Math.sin(t * 0.6 + 1)
-                beat = kick
-                var N = 64; bars = new Array(N)
-                for (var i = 0; i < N; i++) {
-                    var f = i / N
-                    var v = 0.18 + 0.82 * Math.abs(Math.sin(i * 0.27 + t * 1.6 + Math.sin(i * 0.5 + t * 0.4)))
-                    v *= (1 - f * 0.45) * (0.55 + energy * 0.55)
-                    v += beat * 0.4 * Math.max(0, 1 - f * 1.5)
-                    bars[i] = Math.max(0.02, Math.min(1.15, v))
-                }
+        function flatBars() {
+            var b = new Array(64); for (var i = 0; i < 64; i++) b[i] = 0.0; return b
+        }
+
+        // Simulated source: hit at random intervals (not a steady BPM).
+        function simulate(t) {
+            if (t >= canvas.simNextBeat) {
+                canvas.simLastKick = t
+                canvas.simNextBeat = t + (0.28 + Math.random() * 0.55)   // 0.28..0.83s
             }
-            beat *= viz.beatMul
-            level = Math.min(1.4, beat * (0.5 + energy * 0.6))
+            var since = t - canvas.simLastKick
+            var kick = Math.exp(-since * 7)
+            var energy = Math.max(0.12, 0.45 + 0.3 * Math.sin(t * 0.3) + 0.12 * Math.sin(t * 0.7 + 1))
+            var beat = kick * viz.beatMul
+            var bass = kick * 0.8 + 0.08
+            var level = Math.min(1.4, (beat * 0.6 + bass * 0.9) * (0.6 + energy * 0.5))
+            var N = 64, bars = new Array(N)
+            for (var i = 0; i < N; i++) {
+                var f = i / N
+                var v = 0.18 + 0.82 * Math.abs(Math.sin(i * 0.27 + t * 1.6 + Math.sin(i * 0.5 + t * 0.4)))
+                v *= (1 - f * 0.45) * (0.55 + energy * 0.55)
+                v += beat * 0.4 * Math.max(0, 1 - f * 1.5)
+                bars[i] = Math.max(0.02, Math.min(1.15, v))
+            }
             return { energy: energy, beat: beat, level: level, bars: bars }
+        }
+
+        function getAudioData() {
+            // No capture device chosen -> animate random beats.
+            if (audioAnalyzer.simulated)
+                return canvas.simulate(viz.vt)
+            // Live capture: react to the song's beat + bass; stay idle when silent.
+            var energy = audioAnalyzer.energy
+            var bass   = audioAnalyzer.bass
+            var beat   = audioAnalyzer.beat * viz.beatMul
+            var bars   = audioAnalyzer.bars
+            if (energy < 0.004 && bass < 0.03)
+                return { energy: 0, beat: 0, level: 0, bars: canvas.flatBars() }
+            var level = Math.min(1.4, (beat * 0.6 + bass * 0.9) * (0.6 + energy * 0.5))
+            return { energy: energy, beat: beat, level: level,
+                     bars: (bars && bars.length ? bars : canvas.flatBars()) }
         }
 
         onPaint: {

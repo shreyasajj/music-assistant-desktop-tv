@@ -15,7 +15,7 @@ class Settings:
     compact_lyrics: bool = True       # show only prev/active/next-2 lyric lines
     art_pump: bool = True             # pump the now-playing art with the bass
     viz_behind_lyrics: bool = False   # render the visualizer behind the lyrics
-    audio_device: str = ""            # capture device for the visualizer ("" = auto)
+    audio_device: str = ""            # visualizer source: "" = simulated, "__auto__" = output monitor, else a device
 
 def default_config_path() -> Path:
     base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")

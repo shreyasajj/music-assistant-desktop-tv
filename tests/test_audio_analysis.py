@@ -54,8 +54,8 @@ class _FakeSd:
     def __init__(self, devices): self._devices = devices
     def query_devices(self): return self._devices
 
-def test_resolve_device_prefers_monitor_source():
-    a = AudioAnalyzer()
+def test_auto_resolves_monitor_source():
+    a = AudioAnalyzer(device="__auto__")
     sd = _FakeSd([
         {"name": "Built-in Microphone", "max_input_channels": 1},
         {"name": "Built-in Output", "max_input_channels": 0},
@@ -63,8 +63,8 @@ def test_resolve_device_prefers_monitor_source():
     ])
     assert a._resolve_device(sd) == 2
 
-def test_resolve_device_falls_back_to_default_when_no_monitor():
-    a = AudioAnalyzer()
+def test_auto_falls_back_to_default_when_no_monitor():
+    a = AudioAnalyzer(device="__auto__")
     sd = _FakeSd([{"name": "Mic", "max_input_channels": 1}])
     assert a._resolve_device(sd) is None
 
@@ -72,3 +72,19 @@ def test_resolve_device_explicit_override_wins():
     a = AudioAnalyzer(device="my-device")
     sd = _FakeSd([{"name": "something.monitor", "max_input_channels": 2}])
     assert a._resolve_device(sd) == "my-device"
+
+def test_simulated_flag():
+    assert AudioAnalyzer().simulated is True            # default = no capture device
+    assert AudioAnalyzer(device="").simulated is True
+    assert AudioAnalyzer(device="__auto__").simulated is False
+    assert AudioAnalyzer(device="some-monitor").simulated is False
+
+def test_simulated_start_does_not_capture():
+    a = AudioAnalyzer()        # simulated -> start() is a no-op, never touches sounddevice
+    a.start()
+    assert getattr(a, "_stream", None) is None
+
+def test_bass_exposed_after_push():
+    a = AudioAnalyzer(device="__auto__")
+    a.push(sine(60) * 6)
+    assert a.bass > 0.0

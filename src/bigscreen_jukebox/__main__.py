@@ -149,9 +149,10 @@ class SettingsController(QObject):
     artPump = Property(bool, lambda s: s._s.art_pump, notify=changed)
     vizBehindLyrics = Property(bool, lambda s: s._s.viz_behind_lyrics, notify=changed)
     audioDevice = Property(str, lambda s: s._s.audio_device, notify=changed)
-    # First entry = auto (system monitor); the rest are capture-device names.
+    # Index 0 = simulated (""), 1 = auto-detect monitor ("__auto__"), rest = device names.
     audioDevices = Property("QVariantList",
-                            lambda s: ["Auto (system monitor)"] + s._input_device_names(),
+                            lambda s: ["Simulated (random beats)", "Auto (output monitor)"]
+                                      + s._input_device_names(),
                             notify=changed)
 
 
@@ -172,7 +173,7 @@ def main() -> int:
 
     settings = load_settings(default_config_path())
     ma = MaClient(settings)
-    analyzer = AudioAnalyzer(device=settings.audio_device or None)
+    analyzer = AudioAnalyzer(device=settings.audio_device)
     guest = GuestController(ma, settings)
 
     engine = QQmlApplicationEngine()

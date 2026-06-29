@@ -13,7 +13,11 @@ Item {
         VizState.mode = modes[(i + d + modes.length) % modes.length]
     }
 
-    readonly property bool live: audioAnalyzer.energy > 0.001
+    readonly property bool simulated: audioAnalyzer.simulated
+    readonly property bool flowing: audioAnalyzer.energy > 0.004 || audioAnalyzer.bass > 0.03
+    readonly property bool sourceActive: simulated || flowing
+    readonly property string sourceLabel: simulated ? "Simulated"
+                                                     : (flowing ? "Live feed" : "Waiting for audio")
 
     Rectangle { anchors.fill: parent; color: "#050507" }
 
@@ -49,12 +53,12 @@ Item {
             }
         }
 
-        Rectangle {            // .source-btn (live indicator)
+        Rectangle {            // .source-btn (source indicator)
             height: 60
             width: sourceRow.implicitWidth + 48
             radius: 40
-            color: viz.live ? Qt.rgba(0, 224 / 255, 198 / 255, 0.12) : Qt.rgba(10 / 255, 10 / 255, 16 / 255, 0.5)
-            border.color: viz.live ? Theme.a1 : Qt.rgba(1, 1, 1, 0.1)
+            color: viz.sourceActive ? Qt.rgba(0, 224 / 255, 198 / 255, 0.12) : Qt.rgba(10 / 255, 10 / 255, 16 / 255, 0.5)
+            border.color: viz.sourceActive ? Theme.a1 : Qt.rgba(1, 1, 1, 0.1)
             border.width: 1
             Row {
                 id: sourceRow
@@ -63,13 +67,13 @@ Item {
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     width: 11; height: 11; radius: 6
-                    color: viz.live ? Theme.a1 : Qt.rgba(1, 1, 1, 0.4)
+                    color: viz.sourceActive ? Theme.a1 : Qt.rgba(1, 1, 1, 0.4)
                 }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: viz.live ? "Live feed" : "Simulated"
+                    text: viz.sourceLabel
                     font.pixelSize: 21; font.weight: Font.Bold
-                    color: viz.live ? Theme.a1 : Qt.rgba(1, 1, 1, 0.7)
+                    color: viz.sourceActive ? Theme.a1 : Qt.rgba(1, 1, 1, 0.7)
                 }
             }
         }
