@@ -11,7 +11,14 @@ from .ma_client import MaClient
 from .audio_analysis import AudioAnalyzer
 from .guest_server import GuestServer, local_ip
 
-QML_DIR = Path(__file__).resolve().parent.parent.parent / "qml"
+def _qml_dir() -> Path:
+    # In a PyInstaller bundle the qml/ folder is shipped alongside the code
+    # (added via --add-data "qml:qml"); otherwise it's at the repo root.
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "qml"
+    return Path(__file__).resolve().parent.parent.parent / "qml"
+
+QML_DIR = _qml_dir()
 
 
 class GuestController(QObject):

@@ -1,0 +1,116 @@
+name: Build & Release
+
+# Build a Linux desktop bundle and publish a GitHub release on every push to
+# main/master (full release) or dev (pre-release). Produces a portable tarball
+# plus an AppImage you can run on KDE Plasma.
+on:
+  push:
+    branches: [main, master, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: write          # needed to create releases with the default token
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          # Qt runtime libs + PortAudio (visualizer capture) + AppImage tooling
+          sudo apt-get install -y --no-install-recommends \
+            libportaudio2 libpulse0 libegl1 libgl1 libxkbcommon0 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 \
+            libfuse2 file imagemagick wget
+
+      - name: Install project and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+          pip install pyinstaller
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller --noconfirm --clean \
+            --name bigscreen-jukebox \
+            --collect-all PySide6 \
+            --add-data "qml:qml" \
+            --add-data "packaging:packaging" \
+            --paths src \
+            src/bigscreen_jukebox/__main__.py
+
+      - name: Package portable tarball
+        run: |
+          tar -czf bigscreen-jukebox-linux-x86_64.tar.gz -C dist bigscreen-jukebox
+          ls -lh bigscreen-jukebox-linux-x86_64.tar.gz
+
+      - name: Build AppImage
+        continue-on-error: true        # best-effort; the tarball is always produced
+        run: |
+          set -eux
+          APPDIR=AppDir
+          rm -rf "$APPDIR"
+          mkdir -p "$APPDIR/usr"
+          cp -r dist/bigscreen-jukebox/* "$APPDIR/usr/"
+
+          # AppRun launcher
+          cat > "$APPDIR/AppRun" <<'EOF'
+          #!/bin/bash
+          HERE="$(dirname "$(readlink -f "$0")")"
+          exec "$HERE/usr/bigscreen-jukebox" "$@"
+          EOF
+          chmod +x "$APPDIR/AppRun"
+
+          # Desktop entry (must live at the AppDir root for AppImage)
+          cat > "$APPDIR/bigscreen-jukebox.desktop" <<'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=Bigscreen Jukebox
+          Comment=Music Assistant on the big screen
+          Exec=bigscreen-jukebox
+          Icon=bigscreen-jukebox
+          Categories=AudioVideo;Audio;Player;
+          X-KDE-FormFactor=mediacenter,tv
+          EOF
+
+          # Simple generated icon (teal->magenta blob on the app background)
+          convert -size 256x256 xc:'#07070b' \
+            -fill '#00e0c6' -draw 'roundrectangle 58,58 198,198 36,36' \
+            -fill '#ff3da6' -draw 'circle 150,150 150,96' \
+            "$APPDIR/bigscreen-jukebox.png"
+          cp "$APPDIR/bigscreen-jukebox.png" "$APPDIR/.DirIcon"
+
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 \
+            ./appimagetool-x86_64.AppImage "$APPDIR" Bigscreen_Jukebox-x86_64.AppImage
+          ls -lh Bigscreen_Jukebox-x86_64.AppImage
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Build ${{ github.run_number }} (${{ github.ref_name }})
+          # dev builds are marked pre-release; main/master are full releases
+          prerelease: ${{ github.ref_name == 'dev' }}
+          fail_on_unmatched_files: false
+          body: |
+            Automated build from `${{ github.ref_name }}` (`${{ github.sha }}`).
+
+            **Download for KDE Plasma:**
+            - `Bigscreen_Jukebox-x86_64.AppImage` — `chmod +x` it and run.
+            - or the `.tar.gz` — extract and run `bigscreen-jukebox/bigscreen-jukebox`.
+
+            First run: open **Settings**, enter your Music Assistant host/token, pick a player.
+            Live visualizer/art-pump need `libportaudio2` on the system (optional).
+          files: |
+            bigscreen-jukebox-linux-x86_64.tar.gz
+            Bigscreen_Jukebox-x86_64.AppImage
