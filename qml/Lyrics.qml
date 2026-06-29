@@ -8,13 +8,11 @@ import QtQuick.Controls
 Item {
     id: root
     property var lyrics: JSON.parse(maClient.lyricsJson)
-    Connections { target: maClient; function onLyricsJsonChanged() { root.lyrics = JSON.parse(maClient.lyricsJson) } }
-
     property int active: activeLineIndex(maClient.positionMs)
-    Connections {
-        target: maClient
-        function onPositionMsChanged() { root.active = root.activeLineIndex(maClient.positionMs) }
-    }
+    property var win: windowLines()
+    readonly property int count: (lyrics.lines ? lyrics.lines.length : 0)
+    // clamp so the first line reads as "active" before the first timestamp passes
+    readonly property int act: Math.max(0, active)
 
     function activeLineIndex(posMs) {
         if (!lyrics.synced || !lyrics.lines) return -1
@@ -28,9 +26,30 @@ Item {
     function lineText(i) {
         return (lyrics.lines && i >= 0 && i < lyrics.lines.length) ? lyrics.lines[i].text : ""
     }
-    readonly property int count: (lyrics.lines ? lyrics.lines.length : 0)
-    // clamp so the first line reads as "active" before the first timestamp passes
-    readonly property int act: Math.max(0, active)
+    // {above, center, below1, below2} for the compact window. Inserts a 🎵 filler
+    // during the intro and long instrumental gaps so the screen isn't blank.
+    function windowLines() {
+        var L = lyrics.lines || []
+        var n = L.length
+        if (n === 0) return { above: "", center: "", below1: "", below2: "" }
+        var pos = maClient.positionMs
+        var a = active
+        var MUSIC = "🎵"
+        if (a < 0) {                       // before the first line (intro)
+            if (L[0].time_ms !== null && L[0].time_ms > 2000 && pos < L[0].time_ms - 1200)
+                return { above: "", center: MUSIC, below1: L[0].text, below2: (n > 1 ? L[1].text : "") }
+            return { above: "", center: L[0].text, below1: (n > 1 ? L[1].text : ""), below2: (n > 2 ? L[2].text : "") }
+        }
+        if (a + 1 < n && L[a].time_ms !== null && L[a + 1].time_ms !== null) {
+            var gap = L[a + 1].time_ms - L[a].time_ms      // instrumental break
+            if (gap > 8000 && (pos - L[a].time_ms) > 5000 && (L[a + 1].time_ms - pos) > 1500)
+                return { above: L[a].text, center: MUSIC, below1: L[a + 1].text, below2: (a + 2 < n ? L[a + 2].text : "") }
+        }
+        return { above: (a - 1 >= 0 ? L[a - 1].text : ""),
+                 center: (a < n ? L[a].text : ""),
+                 below1: (a + 1 < n ? L[a + 1].text : ""),
+                 below2: (a + 2 < n ? L[a + 2].text : "") }
+    }
 
     // optional visualizer background — recolored to magenta/violet so it doesn't
     // blend with the teal active lyric line.
@@ -63,7 +82,7 @@ Item {
             width: parent.width - 360
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
-            text: root.lineText(root.act)
+            text: root.win.center
             color: Theme.a1
             font.pixelSize: 92
             font.weight: Font.ExtraBold
@@ -74,7 +93,7 @@ Item {
             width: parent.width - 460
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
-            text: root.lineText(root.act - 1)
+            text: root.win.above
             color: Qt.rgba(1, 1, 1, 0.5)
             font.pixelSize: 48
             font.weight: Font.Bold
@@ -85,7 +104,7 @@ Item {
             width: parent.width - 460
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
-            text: root.lineText(root.act + 1)
+            text: root.win.below1
             color: Qt.rgba(1, 1, 1, 0.5)
             font.pixelSize: 48
             font.weight: Font.Bold
@@ -95,7 +114,7 @@ Item {
             width: parent.width - 520
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
-            text: root.lineText(root.act + 2)
+            text: root.win.below2
             color: Qt.rgba(1, 1, 1, 0.28)
             font.pixelSize: 42
         }

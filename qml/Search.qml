@@ -8,6 +8,11 @@ Item {
     // D-pad focus index into the results list (driven by main.qml's key handler)
     property int focusIdx: 0
 
+    signal requestTopbar()    // Up from the search box -> exit to the tabs
+    signal requestResults()   // Down from the search box -> move into the results
+
+    function focusInput() { input.forceActiveFocus() }
+
     function moveFocus(d) {
         var n = maClient.searchResults.length
         if (n === 0) return
@@ -22,6 +27,9 @@ Item {
         target: maClient
         function onSearchResultsChanged() { root.focusIdx = 0 }
     }
+
+    // Land on Search ready to type.
+    onVisibleChanged: if (visible) Qt.callLater(focusInput)
 
     // ── Search field (.search-field) ─────────────────────────────────────────
     Rectangle {
@@ -52,6 +60,9 @@ Item {
                 font.weight: Font.DemiBold
                 background: Item {}
                 onAccepted: maClient.search(text)
+                // Up exits Search; Down dives into the results list.
+                Keys.onUpPressed: function (e) { root.requestTopbar(); e.accepted = true }
+                Keys.onDownPressed: function (e) { root.requestResults(); e.accepted = true }
             }
         }
     }

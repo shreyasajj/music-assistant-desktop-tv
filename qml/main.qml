@@ -37,11 +37,14 @@ ApplicationWindow {
             stack.currentIndex = i
             focusZone = "content"
             playerMenuOpen = false
+            if (i === 1) Qt.callLater(searchScreen.focusInput)   // type immediately on Search
+            else stage.forceActiveFocus()
         }
         function enterTopbar() {
             focusZone = "topbar"
             topIdx = stack.currentIndex
             playerMenuOpen = false
+            stage.forceActiveFocus()
         }
         function activateTop() {
             if (topIdx === win.guestIdx) guestController.toggle()
@@ -61,10 +64,14 @@ ApplicationWindow {
                 return
             }
 
-            // content zone
+            // content zone (reached when the stage holds focus, i.e. not typing in Search)
             if (e.key === Qt.Key_Up) {
-                if (stack.currentIndex === 1 && searchScreen.focusIdx > 0) searchScreen.moveFocus(-1)
-                else stage.enterTopbar()
+                if (stack.currentIndex === 1) {
+                    if (searchScreen.focusIdx > 0) searchScreen.moveFocus(-1)
+                    else searchScreen.focusInput()     // top of results -> back to the search box
+                } else {
+                    stage.enterTopbar()
+                }
                 e.accepted = true; return
             }
             if (e.key === Qt.Key_Space) { maClient.playPause(); e.accepted = true; return }
@@ -73,9 +80,12 @@ ApplicationWindow {
                 if (e.key === Qt.Key_Right) { maClient.next(); e.accepted = true }
                 else if (e.key === Qt.Key_Left) { maClient.previous(); e.accepted = true }
                 else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { maClient.playPause(); e.accepted = true }
-            } else if (stack.currentIndex === 1) {     // Search
+            } else if (stack.currentIndex === 1) {     // Search results
                 if (e.key === Qt.Key_Down) { searchScreen.moveFocus(1); e.accepted = true }
                 else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { searchScreen.activate(); e.accepted = true }
+            } else if (stack.currentIndex === 2) {     // Lyrics — arrows toggle viz behind lyrics
+                if (e.key === Qt.Key_Right) { settingsController.setVizBehindLyrics(true); e.accepted = true }
+                else if (e.key === Qt.Key_Left) { settingsController.setVizBehindLyrics(false); e.accepted = true }
             } else if (stack.currentIndex === 3) {     // Visualizer
                 if (e.key === Qt.Key_Right) { vizScreen.cycleMode(1); e.accepted = true }
                 else if (e.key === Qt.Key_Left) { vizScreen.cycleMode(-1); e.accepted = true }
@@ -88,7 +98,11 @@ ApplicationWindow {
             anchors.fill: parent
             currentIndex: 0
             NowPlaying { guestOn: win.guestOn }
-            Search { id: searchScreen }
+            Search {
+                id: searchScreen
+                onRequestTopbar: stage.enterTopbar()
+                onRequestResults: { stage.forceActiveFocus(); searchScreen.focusIdx = 0 }
+            }
             Lyrics { }
             Visualizer { id: vizScreen }
             SettingsView { }
