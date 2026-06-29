@@ -1,11 +1,20 @@
 name: Build & Release
 
-# Build Linux desktop bundles (x86_64 + aarch64) and publish a GitHub release on
-# every push to main/master (full release) or dev (pre-release). Each arch
-# produces a portable tarball plus an AppImage you can run on KDE Plasma.
+# Build Linux desktop bundles (x86_64 + aarch64) and publish a GitHub release.
+# Each arch produces a portable tarball plus an AppImage you can run on KDE Plasma.
+#
+# Three ways a release is produced:
+#   - push to main/master   -> rolling "build-<N>" full release
+#   - push to dev           -> rolling "build-<N>" pre-release
+#   - push a tag like v1.2.0 -> a named "v1.2.0" release (versioned, sticky)
+#                              tags with a hyphen (v1.2.0-rc1) are pre-releases
+#
+# To cut a versioned release:
+#   git tag -a v1.2.0 -m "v1.2.0"   &&   git push origin v1.2.0
 on:
   push:
     branches: [main, master, dev]
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -139,10 +148,12 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: build-${{ github.run_number }}
-          name: Build ${{ github.run_number }} (${{ github.ref_name }})
-          # dev builds are marked pre-release; main/master are full releases
-          prerelease: ${{ github.ref_name == 'dev' }}
+          # Tag push (v1.2.0) -> sticky versioned release named after the tag.
+          # Branch push -> rolling "build-<N>" release.
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('build-{0}', github.run_number) }}
+          name: ${{ github.ref_type == 'tag' && format('Bigscreen Jukebox {0}', github.ref_name) || format('Build {0} ({1})', github.run_number, github.ref_name) }}
+          # Pre-release if pushed from dev, or a tag with a hyphen (e.g. v1.2.0-rc1).
+          prerelease: ${{ github.ref_name == 'dev' || contains(github.ref_name, '-') }}
           fail_on_unmatched_files: false
           body: |
             Automated build from `${{ github.ref_name }}` (`${{ github.sha }}`).
