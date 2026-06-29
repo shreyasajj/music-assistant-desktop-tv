@@ -4,6 +4,6 @@ PySide6>=6.6
 qasync>=0.27
 music-assistant-client>=1.0
 aiohttp>=3.9
-qrcode>=7.4
+qrcode[pil]>=7.4
 numpy>=1.26
 sounddevice>=0.4
