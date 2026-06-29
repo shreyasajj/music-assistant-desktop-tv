@@ -80,14 +80,27 @@ class MaClient(QObject):
                 self._refresh()
                 self._spawn(self._reload_queue_items())
 
+    commandError = Signal(str)
+
     def _spawn(self, coro) -> None:
         """Schedule a client coroutine on the running loop (QML slots are sync)."""
         try:
-            asyncio.ensure_future(coro)
+            task = asyncio.ensure_future(coro)
         except RuntimeError:
             # No running loop (e.g. unit tests without a live session); drop it.
             if hasattr(coro, "close"):
                 coro.close()
+            return
+        task.add_done_callback(self._on_spawned_done)
+
+    def _on_spawned_done(self, task) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            # e.g. "Playback failed to start" when the target player can't output.
+            print(f"[warn] MA command failed: {exc}")
+            self.commandError.emit(str(exc))
 
     def set_search_results(self, items: list[dict]) -> None:
         self._search_results = list(items)
