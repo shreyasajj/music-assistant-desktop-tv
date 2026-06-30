@@ -1,0 +1,81 @@
+name: Flatpak CI
+
+# Builds and validates the Flatpak manifest on every push and PR.
+# Also regenerates python3-requirements.json and uploads it as an artifact —
+# download it and commit it to flatpak/ before submitting to Flathub (Flathub
+# builds are offline and require the pinned dep JSON to be in the repo).
+on:
+  push:
+    branches: [main, master, dev]
+    paths:
+      - 'flatpak/**'
+      - 'src/**'
+      - 'qml/**'
+      - 'pyproject.toml'
+      - '.github/workflows/flatpak.yml'
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install flatpak toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            flatpak flatpak-builder appstream desktop-file-utils
+
+      - name: Add Flathub remote
+        run: |
+          flatpak remote-add --user --if-not-exists flathub \
+            https://dl.flathub.org/repo/flathub.flatpakrepo
+
+      - name: Install freedesktop runtime + SDK
+        run: |
+          flatpak install --user --noninteractive \
+            org.freedesktop.Platform//24.08 \
+            org.freedesktop.Sdk//24.08
+
+      - name: Generate pinned Python deps
+        run: |
+          pip install requests
+          curl -fsSL -o flatpak-pip-generator \
+            https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/pip/flatpak-pip-generator
+          python flatpak-pip-generator \
+            --runtime=org.freedesktop.Sdk//24.08 \
+            --requirements-file=flatpak/requirements.txt \
+            --output flatpak/python3-requirements
+          echo "Generated flatpak/python3-requirements.json"
+          wc -l flatpak/python3-requirements.json
+
+      - name: Build Flatpak
+        run: |
+          flatpak-builder --user --install --force-clean build-dir \
+            flatpak/io.github.shreyasajj.MusicAssistantDesktopTv.yaml 2>&1 | tail -40
+
+      - name: Validate .desktop file
+        run: |
+          desktop-file-validate \
+            flatpak/io.github.shreyasajj.MusicAssistantDesktopTv.desktop
+
+      - name: Validate AppStream metadata
+        run: |
+          appstreamcli validate --pedantic \
+            flatpak/io.github.shreyasajj.MusicAssistantDesktopTv.metainfo.xml \
+            || appstream-util validate-relax \
+               flatpak/io.github.shreyasajj.MusicAssistantDesktopTv.metainfo.xml
+
+      - name: Upload python3-requirements.json
+        uses: actions/upload-artifact@v4
+        with:
+          name: python3-requirements
+          path: flatpak/python3-requirements.json
+          # Download this artifact and commit it to flatpak/ before submitting to Flathub.

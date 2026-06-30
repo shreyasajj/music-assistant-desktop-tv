@@ -45,11 +45,14 @@ jobs:
           # libxkbcommon-x11-0 + libxcb-xkb1 back the XCB platform plugin (X11);
           # without them PyInstaller can't bundle them and the AppImage may fail
           # to start ("could not load the Qt platform plugin xcb") on minimal hosts.
+          # Wayland client libs are bundled into the AppImage for Wayland-only systems
+          # (e.g. Ubuntu Plasma Bigscreen). libEGL stays on the host — it's GPU-specific.
           sudo apt-get install -y --no-install-recommends \
             libportaudio2 libpulse0 libegl1 libgl1 libxkbcommon0 \
             libxkbcommon-x11-0 libxcb-xkb1 \
             libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
             libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 \
+            libwayland-client0 libwayland-cursor0 libwayland-egl1 \
             libfuse2 file imagemagick wget
 
       - name: Install project and PyInstaller
@@ -94,13 +97,36 @@ jobs:
           mkdir -p "$APPDIR/usr"
           cp -r dist/bigscreen-jukebox/* "$APPDIR/usr/"
 
-          # AppRun launcher
-          cat > "$APPDIR/AppRun" <<'EOF'
+          # AppRun launcher — auto-detects Wayland vs X11 so the binary works on
+          # both Wayland-only systems (Plasma Bigscreen) and traditional X11 desktops.
+          # libEGL is intentionally NOT bundled: it is GPU-driver-specific and is
+          # always present on any Wayland compositor system.
+          cat > "$APPDIR/AppRun" <<'APPRUN'
           #!/bin/bash
           HERE="$(dirname "$(readlink -f "$0")")"
-          exec "$HERE/usr/bigscreen-jukebox" "$@"
-          EOF
+          # Prepend bundled Wayland client libs (stable ABI, safe to ship).
+          export LD_LIBRARY_PATH="${HERE}/usr/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+          # Choose the Qt platform plugin based on the running compositor.
+          # Honour QT_QPA_PLATFORM if the user already set it.
+          if [ -z "$QT_QPA_PLATFORM" ]; then
+              if [ -n "$WAYLAND_DISPLAY" ]; then
+                  export QT_QPA_PLATFORM=wayland
+              else
+                  export QT_QPA_PLATFORM=xcb
+              fi
+          fi
+          exec "${HERE}/usr/bigscreen-jukebox" "$@"
+          APPRUN
           chmod +x "$APPDIR/AppRun"
+
+          # Bundle Wayland client protocol libs (NOT libEGL — stays on host).
+          # These are needed by Qt's Wayland platform plugin and have a stable ABI.
+          mkdir -p "$APPDIR/usr/lib"
+          for lib in libwayland-client.so.0 libwayland-cursor.so.0; do
+            path=$(ldconfig -p 2>/dev/null | grep "[[:space:]]${lib}[[:space:]]" | awk 'NR==1{print $NF}')
+            [ -n "$path" ] && cp -v "$path" "$APPDIR/usr/lib/" \
+              || echo "WARNING: ${lib} not found on build host"
+          done
 
           # Desktop entry (must live at the AppDir root for AppImage)
           cat > "$APPDIR/bigscreen-jukebox.desktop" <<'EOF'
@@ -162,10 +188,13 @@ jobs:
           body: |
             Automated build from `${{ github.ref_name }}` (`${{ github.sha }}`).
 
-            **Download for KDE Plasma** (pick your CPU architecture):
+            **Download** (pick your CPU architecture):
             - **x86_64** (Intel/AMD): `Bigscreen_Jukebox-x86_64.AppImage` — `chmod +x` it and run.
-            - **aarch64** (ARM, e.g. Raspberry Pi 4/5, ARM SBCs): `Bigscreen_Jukebox-aarch64.AppImage` — `chmod +x` it and run.
+            - **aarch64** (ARM — Raspberry Pi 4/5, ARM SBCs): `Bigscreen_Jukebox-aarch64.AppImage` — `chmod +x` it and run.
             - or the matching `.tar.gz` — extract and run `bigscreen-jukebox/bigscreen-jukebox`.
+
+            **Wayland** (Plasma Bigscreen and other Wayland-only desktops) is supported natively.
+            The AppImage auto-detects `$WAYLAND_DISPLAY` and uses the Wayland platform; no extra flags needed.
 
             First run: open **Settings**, enter your Music Assistant host/token, pick a player.
             Live visualizer/art-pump need `libportaudio2` on the system (optional).
