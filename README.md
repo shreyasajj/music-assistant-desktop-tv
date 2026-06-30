@@ -26,12 +26,37 @@ mode, all driveable with a D-pad remote. Built with PySide6 / QML.
 Grab the latest from the [Releases page](https://github.com/shreyasajj/MusicAssistantDesktopTv/releases)
 (full releases from `main`, pre-releases from `dev`):
 
-- **AppImage** — `chmod +x Bigscreen_Jukebox-<arch>.AppImage` and run it (KDE Plasma & most Linux desktops).
-  Pick `x86_64` (Intel/AMD) or `aarch64` (ARM — Raspberry Pi 4/5 and other ARM SBCs).
+- **AppImage** — pick your CPU architecture:
+  - `Bigscreen_Jukebox-x86_64.AppImage` — Intel / AMD (most desktop PCs and laptops)
+  - `Bigscreen_Jukebox-aarch64.AppImage` — ARM (Raspberry Pi 4/5 and other ARM SBCs)
 - **Tarball** — extract and run `bigscreen-jukebox/bigscreen-jukebox` (also published per arch).
 
-For the live visualizer / art-pump, install `libportaudio2` (optional). **First run:**
-open **Settings**, enter your Music Assistant host + long-lived token, and pick a default player.
+### Running the AppImage on AMD/Intel x86_64
+
+```bash
+chmod +x Bigscreen_Jukebox-x86_64.AppImage
+./Bigscreen_Jukebox-x86_64.AppImage
+```
+
+**No extra packages are required to launch the app.** The AppImage bundles everything it needs
+(Qt, Python, all dependencies). The only optional install is for the live audio visualizer:
+
+```bash
+# Optional — only needed for the audio visualizer / art-pump beat detection
+sudo apt install libportaudio2      # Debian / Ubuntu
+sudo dnf install portaudio          # Fedora
+sudo pacman -S portaudio            # Arch
+```
+
+Without `libportaudio2` the app runs normally — the visualizer falls back to a simulated mode.
+
+> **If the AppImage refuses to start** with a FUSE error, your kernel may have FUSE disabled.
+> Run it with the extraction flag instead:
+> ```bash
+> ./Bigscreen_Jukebox-x86_64.AppImage --appimage-extract-and-run
+> ```
+
+**First run:** open **Settings**, enter your Music Assistant host + long-lived token, and pick a default player.
 
 ## Project structure
 
