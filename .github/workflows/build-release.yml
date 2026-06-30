@@ -115,15 +115,6 @@ jobs:
                   export QT_QPA_PLATFORM=xcb
               fi
           fi
-          # Qt's OpenGL/EGL RHI backend fails inside an AppImage when the bundled
-          # Qt can't locate the host EGL driver or DRI path (produces
-          # "QRhiGles2: Failed to create context / Aborted"). Software RHI avoids
-          # that entirely and is smooth at 1080p on any modern CPU.
-          # To use GPU instead: export QSG_RHI_BACKEND=vulkan  (if Vulkan available)
-          #                  or: export QSG_RHI_BACKEND=opengl  (if EGL works on your system)
-          if [ -z "$QSG_RHI_BACKEND" ]; then
-              export QSG_RHI_BACKEND=software
-          fi
           exec "${HERE}/usr/bigscreen-jukebox" "$@"
           APPRUN
           chmod +x "$APPDIR/AppRun"
