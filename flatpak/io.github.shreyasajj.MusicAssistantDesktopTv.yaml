@@ -34,6 +34,10 @@ finish-args:
   - --socket=pulseaudio             # PipeWire (pulse) — visualizer audio capture
   - --device=dri                    # GPU for the QML scene graph
   - --env=BIGSCREEN_QML_DIR=/app/share/bigscreen-jukebox/qml
+  # Qt 6 / PySide6: prefer Wayland when the socket is available (Plasma Bigscreen),
+  # fall back to xcb on X11 desktops. The fallback-x11 socket above covers the
+  # X11 case. Remove this line if you want Qt to auto-detect (usually fine on KDE).
+  - --env=QT_QPA_PLATFORM=wayland;xcb
 
 cleanup:
   - '/include'
