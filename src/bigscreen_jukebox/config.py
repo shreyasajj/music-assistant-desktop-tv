@@ -23,11 +23,19 @@ def default_config_path() -> Path:
 
 def load_settings(path: Path) -> Settings:
     if not path.exists():
+        print(f"[info] no settings file at {path}, using defaults")
         return Settings()
-    data = json.loads(path.read_text())
-    fields = {f for f in Settings().__dict__}
-    return Settings(**{k: v for k, v in data.items() if k in fields})
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+        fields = {f for f in Settings().__dict__}
+        s = Settings(**{k: v for k, v in data.items() if k in fields})
+        print(f"[info] settings loaded from {path}")
+        return s
+    except Exception as e:
+        print(f"[warn] could not load settings from {path}: {e} — using defaults")
+        return Settings()
 
 def save_settings(settings: Settings, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(asdict(settings), indent=2))
+    path.write_text(json.dumps(asdict(settings), indent=2), encoding='utf-8')
+    print(f"[info] settings saved to {path}")

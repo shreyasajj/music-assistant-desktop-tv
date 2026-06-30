@@ -1,6 +1,7 @@
 from __future__ import annotations
 import asyncio
 import os
+import signal
 import sys
 from pathlib import Path
 from PySide6.QtGui import QGuiApplication
@@ -131,6 +132,8 @@ class SettingsController(QObject):
         super().__init__()
         self._s = settings
 
+    saveError = Signal(str)   # emitted when save_settings raises (shown as a console warning)
+
     @Slot(str, int, str, int, bool, bool, bool, bool, str)
     def save(self, host, port, token, guest_port, lrclib_fallback,
              compact_lyrics, art_pump, viz_behind_lyrics, audio_device):
@@ -143,7 +146,13 @@ class SettingsController(QObject):
         self._s.art_pump = art_pump
         self._s.viz_behind_lyrics = viz_behind_lyrics
         self._s.audio_device = audio_device
-        save_settings(self._s, default_config_path())
+        try:
+            save_settings(self._s, default_config_path())
+        except Exception as e:
+            msg = f"Could not save settings: {e}"
+            print(f"[error] {msg}")
+            self.saveError.emit(msg)
+            return                # don't emit changed if the write failed
         self.changed.emit()
 
     @staticmethod
@@ -191,6 +200,10 @@ def main() -> int:
     # (TextField/Button/ComboBox) to render; the native style ignores them.
     QQuickStyle.setStyle("Basic")
     app = QGuiApplication(sys.argv)
+
+    # Qt's event loop doesn't call Python's default SIGINT handler, so Ctrl+C
+    # has no effect without this. app.quit() triggers a clean shutdown.
+    signal.signal(signal.SIGINT, lambda *_: app.quit())
 
     try:
         import qasync
